@@ -1,0 +1,9 @@
+# Ignorar a pasta pesada
+output_notebooks/
+Artigos/
+legacy/
+.venv/
+darts_logs/
+.ipynb_checkpoints/
+__pycache__/
+*.pyc

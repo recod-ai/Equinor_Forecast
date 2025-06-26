@@ -1,0 +1,31 @@
+architecture_id,hyperparam_id,Média SMAPE,Rank,Arquitetura,Hiperparâmetros
+Model2_2xConv,hp_medium_balanced,0.6764,1,Adiciona uma segunda camada convolucional.,"Standard, balanced configuration using default architecture parameters."
+Model2_2xConv,hp_stable_regularized,0.6833,2,Adiciona uma segunda camada convolucional.,Aims for stability and regularization with higher dropout and smaller kernels.
+Model2_2xConv,hp_small_fast,0.6905,3,Adiciona uma segunda camada convolucional.,Lightweight configuration for quick training and baseline performance.
+Model2_2xConv,hp_large_robust,0.6951,4,Adiciona uma segunda camada convolucional.,Larger configuration aiming for the best possible performance.
+Model2_2xConv,hp_wide_and_shallow,0.7031,5,Adiciona uma segunda camada convolucional.,Tests a 'wider' but 'shallower' approach with more filters/units but less complexity.
+Model4_Transformer_BiLSTM,hp_medium_balanced,0.7144,6,"Inicia com um Transformer, seguido por BiLSTM.","Standard, balanced configuration using default architecture parameters."
+Model4_Transformer_BiLSTM,hp_large_robust,0.7317,7,"Inicia com um Transformer, seguido por BiLSTM.",Larger configuration aiming for the best possible performance.
+Model4_Transformer_BiLSTM,hp_wide_and_shallow,0.7535,8,"Inicia com um Transformer, seguido por BiLSTM.",Tests a 'wider' but 'shallower' approach with more filters/units but less complexity.
+Model4_Transformer_BiLSTM,hp_small_fast,0.7567,9,"Inicia com um Transformer, seguido por BiLSTM.",Lightweight configuration for quick training and baseline performance.
+Model5_Transformer_2xConv,hp_small_fast,0.7619,10,Combina Transformer com duas camadas convolucionais.,Lightweight configuration for quick training and baseline performance.
+Model5_Transformer_2xConv,hp_medium_balanced,0.7648,11,Combina Transformer com duas camadas convolucionais.,"Standard, balanced configuration using default architecture parameters."
+Model5_Transformer_2xConv,hp_large_robust,0.7669,12,Combina Transformer com duas camadas convolucionais.,Larger configuration aiming for the best possible performance.
+Model5_Transformer_2xConv,hp_stable_regularized,0.7678,13,Combina Transformer com duas camadas convolucionais.,Aims for stability and regularization with higher dropout and smaller kernels.
+Model6_Transformer_Conv_BiLSTM,hp_stable_regularized,0.7703,14,"Integra Transformer, Conv e BiLSTM em sequência.",Aims for stability and regularization with higher dropout and smaller kernels.
+Model3_2xConv_BiLSTM,hp_large_robust,0.7707,15,Adiciona uma camada BiLSTM após as convolucionais.,Larger configuration aiming for the best possible performance.
+Model5_Transformer_2xConv,hp_wide_and_shallow,0.7733,16,Combina Transformer com duas camadas convolucionais.,Tests a 'wider' but 'shallower' approach with more filters/units but less complexity.
+Model6_Transformer_Conv_BiLSTM,hp_large_robust,0.7766,17,"Integra Transformer, Conv e BiLSTM em sequência.",Larger configuration aiming for the best possible performance.
+Model3_2xConv_BiLSTM,hp_wide_and_shallow,0.7798,18,Adiciona uma camada BiLSTM após as convolucionais.,Tests a 'wider' but 'shallower' approach with more filters/units but less complexity.
+Model3_2xConv_BiLSTM,hp_stable_regularized,0.7901,19,Adiciona uma camada BiLSTM após as convolucionais.,Aims for stability and regularization with higher dropout and smaller kernels.
+Model3_2xConv_BiLSTM,hp_small_fast,0.7909,20,Adiciona uma camada BiLSTM após as convolucionais.,Lightweight configuration for quick training and baseline performance.
+Model6_Transformer_Conv_BiLSTM,hp_wide_and_shallow,0.7921,21,"Integra Transformer, Conv e BiLSTM em sequência.",Tests a 'wider' but 'shallower' approach with more filters/units but less complexity.
+Model6_Transformer_Conv_BiLSTM,hp_small_fast,0.7982,22,"Integra Transformer, Conv e BiLSTM em sequência.",Lightweight configuration for quick training and baseline performance.
+Model3_2xConv_BiLSTM,hp_medium_balanced,0.8009,23,Adiciona uma camada BiLSTM após as convolucionais.,"Standard, balanced configuration using default architecture parameters."
+Model6_Transformer_Conv_BiLSTM,hp_medium_balanced,0.8046,24,"Integra Transformer, Conv e BiLSTM em sequência.","Standard, balanced configuration using default architecture parameters."
+Model1_1xConv,hp_large_robust,1.0342,25,Baseline com uma camada convolucional.,Larger configuration aiming for the best possible performance.
+Model1_1xConv,hp_wide_and_shallow,1.0431,26,Baseline com uma camada convolucional.,Tests a 'wider' but 'shallower' approach with more filters/units but less complexity.
+Model4_Transformer_BiLSTM,hp_stable_regularized,1.0548,27,"Inicia com um Transformer, seguido por BiLSTM.",Aims for stability and regularization with higher dropout and smaller kernels.
+Model1_1xConv,hp_medium_balanced,1.1205,28,Baseline com uma camada convolucional.,"Standard, balanced configuration using default architecture parameters."
+Model1_1xConv,hp_stable_regularized,1.1306,29,Baseline com uma camada convolucional.,Aims for stability and regularization with higher dropout and smaller kernels.
+Model1_1xConv,hp_small_fast,1.2115,30,Baseline com uma camada convolucional.,Lightweight configuration for quick training and baseline performance.

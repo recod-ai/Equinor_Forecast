@@ -1,0 +1,6 @@
+{
+  "iteration": 500,
+  "gini": 0.8355537093216049,
+  "spearman_vs_prev": null,
+  "top_feature": "BORE_OIL_VOL_MEAN_LAG_t0"
+}

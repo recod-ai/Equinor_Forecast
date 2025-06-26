@@ -1,0 +1,6 @@
+{
+  "iteration": 1,
+  "gini": 0.8376324619361502,
+  "spearman_vs_prev": null,
+  "top_feature": "Prod_Start_Time_t0"
+}

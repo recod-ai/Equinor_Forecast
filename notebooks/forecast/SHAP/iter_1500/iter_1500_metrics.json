@@ -1,0 +1,6 @@
+{
+  "iteration": 1500,
+  "gini": 0.836715202984805,
+  "spearman_vs_prev": null,
+  "top_feature": "BORE_GAS_VOL_t0"
+}
