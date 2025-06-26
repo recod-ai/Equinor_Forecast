@@ -1,0 +1,84 @@
+# Arquivo de configuração para as arquiteturas de rede a serem testadas.
+# Cada item define uma arquitetura com sua estrutura de blocos e parâmetros padrão.
+
+- architecture_id: "Model1_1xConv"
+  summary: "Baseline com uma camada convolucional."
+  builder: "dynamic" # Indica que usaremos o ArchitectureBuilder
+  blocks:
+    - type: "conv"
+      params: { filters: 128, kernel_size: 3, padding: "same" }
+    - type: "dense"
+      params: { units: 16 }
+    - type: "output"
+      params: { units: 1 }
+
+- architecture_id: "Model2_2xConv"
+  summary: "Adiciona uma segunda camada convolucional."
+  builder: "dynamic"
+  blocks:
+    - type: "conv"
+      params: { filters: 128, kernel_size: 3, padding: "same" }
+    - type: "conv"
+      params: { filters: 64, kernel_size: 3, padding: "same" }
+    - type: "dense"
+      params: { units: 16 }
+    - type: "output"
+      params: { units: 1 }
+
+- architecture_id: "Model3_2xConv_BiLSTM"
+  summary: "Adiciona uma camada BiLSTM após as convolucionais."
+  builder: "dynamic"
+  blocks:
+    - type: "conv"
+      params: { filters: 128, kernel_size: 3, padding: "same" }
+    - type: "conv"
+      params: { filters: 64, kernel_size: 3, padding: "same" }
+    - type: "bilstm"
+      params: { units: 64, dropout: 0.3, recurrent_dropout: 0.2, return_sequences: false } # Última LSTM
+    - type: "dense"
+      params: { units: 16 }
+    - type: "output"
+      params: { units: 1 }
+
+- architecture_id: "Model4_Transformer_BiLSTM"
+  summary: "Inicia com um Transformer, seguido por BiLSTM."
+  builder: "dynamic"
+  blocks:
+    - type: "transformer"
+      params: { head_size: 64, num_heads: 4, ff_dim: 128 }
+    - type: "bilstm"
+      params: { units: 64, dropout: 0.3, recurrent_dropout: 0.2, return_sequences: false }
+    - type: "dense"
+      params: { units: 16 }
+    - type: "output"
+      params: { units: 1 }
+
+- architecture_id: "Model5_Transformer_2xConv"
+  summary: "Combina Transformer com duas camadas convolucionais."
+  builder: "dynamic"
+  blocks:
+    - type: "transformer"
+      params: { head_size: 64, num_heads: 4, ff_dim: 128 }
+    - type: "conv"
+      params: { filters: 128, kernel_size: 3, padding: "same" }
+    - type: "conv"
+      params: { filters: 64, kernel_size: 3, padding: "same" }
+    - type: "dense"
+      params: { units: 16 }
+    - type: "output"
+      params: { units: 1 }
+
+- architecture_id: "Model6_Transformer_Conv_BiLSTM"
+  summary: "Integra Transformer, Conv e BiLSTM em sequência."
+  builder: "dynamic"
+  blocks:
+    - type: "transformer"
+      params: { head_size: 64, num_heads: 4, ff_dim: 128 }
+    - type: "conv"
+      params: { filters: 64, kernel_size: 3, padding: "same" }
+    - type: "bilstm"
+      params: { units: 64, dropout: 0.3, recurrent_dropout: 0.2, return_sequences: false }
+    - type: "dense"
+      params: { units: 16 }
+    - type: "output"
+      params: { units: 1 }

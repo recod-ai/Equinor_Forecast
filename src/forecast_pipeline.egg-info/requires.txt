@@ -1,0 +1,8 @@
+numpy
+pandas
+tensorflow
+tqdm
+rich
+pyyaml
+openpyxl
+colorlog

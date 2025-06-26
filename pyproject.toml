@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forecast_pipeline"            # nome que aparecerá no pip
+version = "0.1.0"
+description = "Pipeline de previsão Equinor"
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    "numpy",
+    "pandas",
+    "tensorflow",         # ou torch, etc.
+    "tqdm",
+    "rich",
+    "pyyaml",
+    "openpyxl",
+    "colorlog",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}            # diz que os pacotes estão em src/
+
+[tool.setuptools.packages.find]
+where = ["src"]                       # encontre tudo dentro de src/

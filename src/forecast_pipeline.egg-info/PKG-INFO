@@ -1,0 +1,14 @@
+Metadata-Version: 2.1
+Name: forecast_pipeline
+Version: 0.1.0
+Summary: Pipeline de previsão Equinor
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: tensorflow
+Requires-Dist: tqdm
+Requires-Dist: rich
+Requires-Dist: pyyaml
+Requires-Dist: openpyxl
+Requires-Dist: colorlog

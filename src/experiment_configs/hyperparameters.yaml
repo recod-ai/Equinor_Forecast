@@ -1,0 +1,65 @@
+# Hyperparameter configuration file.
+# Each profile defines a set of values to be tested across architectures by overriding
+# the default parameters defined in architectures.yaml.
+
+# --- Existing Profiles ---
+
+- hyperparam_id: "hp_small_fast"
+  summary: "Lightweight configuration for quick training and baseline performance."
+  overrides:
+    dropout: 0.2
+    # Overrides for specific block types
+    conv:
+      filters: 64 # Reduces filter count for all 'conv' layers
+    bilstm:
+      units: 32   # Reduces units for all 'bilstm' layers
+    transformer:
+      ff_dim: 64  # Reduces the feed-forward dimension
+
+- hyperparam_id: "hp_medium_balanced"
+  summary: "Standard, balanced configuration using default architecture parameters."
+  overrides:
+    dropout: 0.3
+    # Note: Architecture-default parameters are used if not overridden here.
+    # For example, Model1_1xConv will use its default 128 filters.
+
+- hyperparam_id: "hp_large_robust"
+  summary: "Larger configuration aiming for the best possible performance."
+  overrides:
+    dropout: 0.4
+    conv:
+      filters: 256
+      kernel_size: 5
+    bilstm:
+      units: 128
+    transformer:
+      num_heads: 8
+      ff_dim: 256
+
+# --- New Profiles Added ---
+
+- hyperparam_id: "hp_stable_regularized"
+  summary: "Aims for stability and regularization with higher dropout and smaller kernels."
+  overrides:
+    dropout: 0.5 # Higher global dropout to reduce overfitting
+    conv:
+      filters: 128 # Medium-sized filters
+      kernel_size: 3 # Smaller kernel size to focus on local patterns
+    bilstm:
+      units: 64    # Medium-sized BiLSTM units
+    transformer:
+      num_heads: 4 # Fewer attention heads, less complex
+      ff_dim: 128  # Standard feed-forward dimension
+
+- hyperparam_id: "hp_wide_and_shallow"
+  summary: "Tests a 'wider' but 'shallower' approach with more filters/units but less complexity."
+  overrides:
+    dropout: 0.25
+    conv:
+      filters: 512 # Very wide convolutional layer
+      kernel_size: 3
+    bilstm:
+      units: 256   # Very wide BiLSTM layer
+    transformer:
+      num_heads: 8
+      ff_dim: 128  # Keep ff_dim standard to control complexity
