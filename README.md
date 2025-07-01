@@ -4,11 +4,16 @@
 
 Equinor_Forecast is an open-source pipeline that delivers robust medium-term cumulative forecasts (8–16 weeks) for oil, gas, and renewables. It is designed for industrial settings where historical data is often sparse and operating conditions change. The framework excels at few-shot learning, continuous adaptation, and benchmarking a wide range of forecasting models.
 
-* trains on as little as **150 historical samples**,
-* **updates continuously** as fresh data arrive, and
-* maintains accuracy when operating conditions change.
+## 🌐 2. Two Forecasting Flows
 
-The same framework benchmarks modern neural forecasters (N-Beats, NHiTS, TiDE) and statistical classics (ARIMA, AutoARIMA) on three public energy datasets: Volve (oil), UNISIM (synthetic reservoir) and OPSD (wind/solar/load).
+### **Flow 1 — Online Few-Shot Training**
+
+**Use Case:** Low-latency updates, quick adaptation
+
+📈 Uses a rolling window of 150 samples
+🔁 Online fine-tuning with last 1–2 samples
+🔄 Daily re-evaluation with learning rate scheduling
+🧠 Compatible with XGBoost, Custom DL, ARIMA, N-Beats, etc.
 
 
 ## Key Features
@@ -35,4 +40,12 @@ Clone the repository and install the required dependencies.
 git clone https://github.com/recod-ai/Equinor_Forecast.gitc
 cd Equinor_Forecast
 pip install -r requirements.txt
+
+### 2. Model Portfolio
+* Category	Representative Models	Training Mode
+* PINN Hybrid	Seq2Context (CNN + LSTM + Physics)	Batch
+* Few-shot Online	XGBoost, Custom DL Architectures	Online
+* Deep Learning	N-Beats, NHiTS, TiDE, TiDE+RIN, NLinear	Online
+* Statistical	ARIMA, AutoARIMA, Linear Regression	Online
+* Evaluation & Interpretability
 
