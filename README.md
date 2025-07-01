@@ -2,143 +2,126 @@
 
 ## Method Overview
 
-**Equinor\_Forecast** provides a unified workflow for forecasting production in oil, gas, and renewable-energy systems.
-At its core is a *few-shot, continuously learning* algorithm that:
+**Equinor\_Forecast** is an open-source pipeline that delivers **medium-term cumulative forecasts** (8 – 16 weeks) for oil, gas and renewables.
+Its few-shot algorithm
 
-* learns from as few as 150 historical samples,
-* updates itself each time new data arrive, and
-* generates **medium-term cumulative forecasts** (8–16 weeks) that remain stable even when operating conditions shift.
+* trains on as little as **150 historical samples**,
+* **updates continuously** as fresh data arrive, and
+* maintains accuracy when operating conditions change.
 
-The framework wraps this method in an end-to-end, open-source pipeline that also benchmarks modern deep architectures (e.g., N-Beats, NHiTS, TiDE) and classical baselines (ARIMA, AutoARIMA). Supported datasets range from Equinor’s Volve field to synthetic UNISIM reservoir simulations and Open Power System Data (OPSD) for wind, solar, and load.
+The same framework benchmarks modern neural forecasters (N-Beats, NHiTS, TiDE) and statistical classics (ARIMA, AutoARIMA) on three public energy datasets: Volve (oil), UNISIM (synthetic reservoir) and OPSD (wind/solar/load).
 
 ---
 
 ## 1 Motivation
 
-Industrial energy assets rarely supply the large, clean histories demanded by many machine-learning models. Long gaps between data acquisition and deployment can postpone value generation for years \cite{data\_random\_2017}.
-To address this reality we pursue two design principles:
+Most industrial assets lack the long, tidy histories that conventional ML expects. Waiting years to collect data delays value creation.
+We therefore design for:
 
-1. **Online adaptation** – retrain the model incrementally so that yesterday’s production instantly informs today’s forecast.
-2. **Cumulative targets** – predict aggregated sums rather than noisy instantaneous rates, providing planners with smoother, more actionable signals \cite{lim\_time\_series\_2021}.
+1. **Online adaptation** – daily fine-tuning turns yesterday’s measurement into today’s prior.
+2. **Cumulative targets** – forecasting aggregated sums smooths noise and aids planning.
 
 ---
 
 ## 2 Data Transformation & Normalization
 
-### 2.1 Cumulative Target Construction
+### 2.1 Cumulative Targets
 
-Daily rates $y_t$ are first integrated to obtain the cumulative series.
-Figure \ref{fig\:preprocessing} contrasts a raw oil-rate trace with its cumulative counterpart, revealing the latter’s reduced variance.
+Convert daily rates `y_t` into a running sum to reduce variance (see *Pre-processing* figure).
 
 ### 2.2 Lagged Feature Matrix
 
-A sliding window of the previous seven days supplies the input vector
+Create a seven-day sliding window:
 
-$$
-\mathbf{X}_t=\bigl[X_{t-7,k},X_{t-6,k},\dots,X_{t-1,k}\bigr],\qquad k\in\mathcal S,
-\tag{1}\label{eq:extended_feature_vector}
-$$
-
-and the stacked window
-
-$$
-\mathcal X_t=\bigl[\mathbf{X}_t,\mathbf{X}_{t-1},\dots,\mathbf{X}_{t-n}\bigr]
-\tag{2}\label{eq:feature_matrix}
-$$
-
-feeds the learner.
+```text
+X_t = [ X_{t-7,k}, X_{t-6,k}, … , X_{t-1,k} ]   for k in S
+X_mat_t = [ X_t , X_{t-1} , … , X_{t-n} ]
+```
 
 ### 2.3 Ratio Normalization
 
-To prevent the cumulative target from drifting beyond the training convex hull, each label is scaled by a local mean:
+To avoid out-of-range extrapolation, scale each cumulative label by a local mean:
 
-$$
-\tilde y_t=\frac{y_t}{\tfrac1n\sum_{i=1}^{n}X_{t-i,k}} .
-\tag{3}\label{eq:normalized_response}
-$$
+```text
+y_t_tilde = y_t / mean( X_{t-i,k} , i = 1 … n )
+```
 
-The model operates on this dimension-less ratio, then re-multiplies by the same mean to recover physical units (Figure \ref{fig\:Norm}).
+The model predicts the dimension-less `y_t_tilde`, then rescales it back to physical units.
 
 ---
 
 ## 3 Online Training Loop
 
-A **rolling window** of $W=150$ samples provides the daily training set
+With a rolling window of `W = 150` samples, the day-`t` training set is
 
-$$
-\mathcal T_t=\bigl\{(x_{t'},y_{t'})\mid t-W\le t' < t\bigr\}.
-\tag{4}\label{eq:sliding_window}
-$$
+```text
+T_t = { (x_{t'}, y_{t'})  |  t-W ≤ t' < t }
+```
 
-After each new observation the model is fine-tuned and immediately used to forecast horizons
-$h\in\{14,28,56,70,94,112\}$ days:
+After ingesting a new point, the model is fine-tuned and produces forecasts for horizons
+`h ∈ {14, 28, 56, 70, 94, 112}` days:
 
-$$
-\hat y_{t+h}=f_t(x_t).
-$$
+```text
+ŷ_{t+h} = f_t( x_t )
+```
 
-Fine-tune granularity is model-specific: deep learners update with the two most recent points; XGBoost refreshes on the latest 50.
-
-Figure \ref{fig\:Slid} depicts the chronology, ensuring a gap of $h$ samples to avoid leakage.
+Deep models update on the two newest samples; XGBoost refreshes on the last 50.
 
 ---
 
 ## 4 Model Portfolio
 
-| Category                      | Representative Models                       |
-| ----------------------------- | ------------------------------------------- |
-| **Few-shot online (default)** | XGBoost; custom DL architecture (Section 5) |
-| Deep-learning benchmarks      | N-Beats, NHiTS, TiDE, TiDE + RIN, NLinear   |
-| Statistical baselines         | ARIMA, AutoARIMA, Linear Regression         |
-| Ensembles                     | Arbitrary combinations supported            |
+| Category                      | Representative Models                     |
+| ----------------------------- | ----------------------------------------- |
+| **Few-shot online (default)** | XGBoost, custom DL architecture (Sec. 5)  |
+| Deep-learning benchmarks      | N-Beats, NHiTS, TiDE, TiDE + RIN, NLinear |
+| Statistical baselines         | ARIMA, AutoARIMA, Linear Regression       |
+| Ensembles                     | Any combination                           |
 
-All models share a standard interface (input 7, output 56, early stopping, adaptive LR) to enable fair evaluation.
+All share the same data interface (7-step input, 56-step output) plus early stopping and adaptive learning rates.
 
 ---
 
 ## 5 Custom Deep Architecture & Ablation
 
-The canonical network (Model 6) integrates:
+**Model 6** (the default) stacks:
 
-1. **Transformer encoder** for long-range self-attention,
-2. **Two 1-D convolutions** to capture local motifs,
-3. **Bi-directional LSTM** for sequential context, and
-4. **Dense head** with LeakyReLU.
+1. Transformer encoder for long-range context,
+2. Two 1-D convolutions for local patterns,
+3. Bi-directional LSTM for sequence memory,
+4. Dense head with LeakyReLU.
 
-Early stopping, dropout 0.3, and the Adam optimizer minimize
+Training minimises mean-absolute-error
 
-$$
-\mathcal L=\frac1T\sum_{t=1}^{T}\bigl|y_t-f(\mathbf X_t;\boldsymbol\theta)\bigr|
-\tag{5}\label{eq:objective_function_refined}
-$$
+```text
+L = (1 / T) Σ | y_t − f( X_t ; θ ) |
+```
 
-(MAE).
-Ablation progressively removes components (Models 1–5) and varies five hyperparameter “profiles” from *small-fast* to *large-robust*. Third-party baselines such as **The Golem** \cite{martinez\_golem:\_2023} and a stacked **GRU** \cite{werneck\_data\_driven\_2022} join the grid for completeness.
-Figure \ref{fig\:Flow\_Volve} sketches Model 6.
+Ablation tests five lighter variants (Models 1-5) and five hyper-parameter “profiles”. External baselines **The Golem** and a stacked **GRU** are also included.
 
 ---
 
 ## 6 Interpretability
 
-A **longitudinal SHAP pipeline** accompanies training:
+A **longitudinal SHAP** routine runs in parallel:
 
-* every checkpoint exports mean absolute SHAP values,
-* Gini and Spearman statistics monitor focus and stability,
-* beeswarm plots reveal directionality.
+* exports mean absolute SHAP values at every checkpoint,
+* tracks focus (Gini) and stability (Spearman),
+* plots beeswarm summaries.
 
-Thus users obtain real-time insight into how feature influence evolves rather than a single post-hoc snapshot (Figure \ref{fig\:Pipeline}).
+Users therefore see how feature importance evolves over time, not just after training.
 
 ---
 
 ## 7 Evaluation & Metrics
 
-Performance is reported for each horizon using
+For each horizon we report
 
-* **SMAPE** – scale-free primary score,
-* **MAE** and **MSE** – absolute and squared errors,
-* **Cumulative-error curves** – degradation with lead time.
+* **SMAPE** (primary, scale-free),
+* **MAE** and **MSE**,
+* cumulative-error curves (accuracy vs lead-time).
 
-Results are averaged over horizons (7 d → 112 d) to visualise the accuracy/lead-time trade-off.
+Averaging across all horizons (7 – 112 days) highlights the accuracy/latency trade-off.
 
 ---
 
@@ -146,37 +129,30 @@ Results are averaged over horizons (7 d → 112 d) to visualise the accuracy/lea
 
 ### 8.1 Datasets
 
-| Domain              | Dataset             | Key Details                              |
-| ------------------- | ------------------- | ---------------------------------------- |
-| Oil & gas           | **Volve** (Equinor) | 4 wells, daily, targets: BORE\_OIL\_VOL  |
-| Synthetic reservoir | **UNISIM-II-H**     | 10 producers, 3 263 d, target: QOOB      |
-| Renewables          | **OPSD** (GB)       | Wind (30 min → 1 d), Solar & Load (12 h) |
+| Domain              | Dataset         | Key Facts                               |
+| ------------------- | --------------- | --------------------------------------- |
+| Oil & gas           | **Volve**       | 4 wells, daily, target = BORE\_OIL\_VOL |
+| Synthetic reservoir | **UNISIM-II-H** | 10 producers, 3 263 days, target = QOOB |
+| Renewables          | **OPSD** (GB)   | Wind (30 min→1 d), Solar & Load (12 h)  |
 
-Minimal preprocessing: mean imputation, moving-window standardisation, optional retention of zeros (important for solar).
+Pre-processing: mean imputation, moving-window standardisation, optional zero retention (useful for solar).
 
 ### 8.2 Hardware & Software
 
-* AMD Ryzen 9 5900XT (16 cores, 32 threads)
+* AMD Ryzen 9 5900XT (16 cores / 32 threads)
 * 31 GiB RAM, Manjaro Linux 6.6.65-1
-* Parallel execution (up to 12 runs) with `forkserver`, in-memory caching, TensorFlow-XLA.
-
-A full training–evaluation cycle takes ≈ 5 min; 12 experiments run concurrently.
+* Parallel pool (`forkserver`) + TensorFlow-XLA; 12 experiments run concurrently (≈ 5 min each).
 
 ---
 
 ## 9 Incremental vs Direct Cumulative Prediction
 
-Two paradigms are compared (Table \ref{tab\:incremental\_vs\_direct}):
+| Approach    | How It Works               | Pros                      | Cons                          |
+| ----------- | -------------------------- | ------------------------- | ----------------------------- |
+| Incremental | Predict `y_{t+1}` then sum | Stepwise interpretability | Error drift over time         |
+| Direct      | Predict `Y_t` in one shot  | No compounding error      | Must extrapolate large values |
 
-* **Incremental** – model predicts $y_{t+1}$; sums accumulate.
-  *Pros*: stepwise interpretability.
-  *Cons*: error drift.
-
-* **Direct** – model outputs $Y_t$ outright.
-  *Pros*: no compounding error.
-  *Cons*: must extrapolate large values.
-
-The online method adopts the **Direct** strategy, aided by the normalization in Eq. \eqref{eq\:normalized\_response} to keep extrapolation bounded.
+Equinor\_Forecast follows the **Direct** route, with ratio normalisation keeping predictions in-range.
 
 ---
 
@@ -197,13 +173,6 @@ Equinor_Forecast/
 ├── experiments/          # Saved configs & results
 └── output_manifest/      # Generated artefacts
 ```
-
-
-## Overview
-
-Equinor_Forecast is an end-to-end machine learning pipeline designed specifically for forecasting in the energy sector, with particular focus on oil well production prediction and renewable energy generation forecasting. The project implements and compares multiple state-of-the-art forecasting algorithms including modern deep learning architectures (N-Beats, NHiTS, TiDE, NLinear) and traditional statistical methods (ARIMA, AutoARIMA) to provide robust and accurate predictions for energy production optimization.
-
-The framework supports multiple real-world energy datasets including the Volve oil field dataset from Equinor, UNISIM reservoir simulation data, and Open Power System Data (OPSD) for renewable energy forecasting. This comprehensive approach enables researchers and practitioners to evaluate and deploy forecasting models across different energy domains, from traditional oil and gas production to modern renewable energy systems.
 
 ## Repository Structure
 
