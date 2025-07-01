@@ -4,8 +4,6 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 
 
-
-
 def create_window_dataset(
     train_df, window_size, target_series, forecast_steps
 ):

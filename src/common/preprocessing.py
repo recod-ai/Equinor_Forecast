@@ -403,6 +403,8 @@ def process_deep_encoder_well(
         horizon=forecast_horizon,
     )
 
+    print('covariate_columns', covariate_columns)
+
     train, val = train_series.split_after(0.6)
     train_cov, val_cov = (
         full_covariates[:train_size].split_after(0.6)[0],

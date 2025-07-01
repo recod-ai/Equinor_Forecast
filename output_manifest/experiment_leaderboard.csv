@@ -1,4 +1,4 @@
-architecture_id,hyperparam_id,Média SMAPE,Rank,Arquitetura,Hiperparâmetros
+architecture_id,hyperparam_id,Average SMAPE,Rank,Architecture,Hyperparameters
 Model2_2xConv,hp_medium_balanced,0.6764,1,Adiciona uma segunda camada convolucional.,"Standard, balanced configuration using default architecture parameters."
 Model2_2xConv,hp_stable_regularized,0.6833,2,Adiciona uma segunda camada convolucional.,Aims for stability and regularization with higher dropout and smaller kernels.
 Model2_2xConv,hp_small_fast,0.6905,3,Adiciona uma segunda camada convolucional.,Lightweight configuration for quick training and baseline performance.
