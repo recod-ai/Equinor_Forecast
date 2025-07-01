@@ -2,9 +2,7 @@
 
 **An Framework for Energy-Sector Time-Series Prediction**
 
-Equinor_Forecast is an open-source pipeline that delivers robust medium-term cumulative forecasts (8–16 weeks) for oil, gas, and renewables. It is designed for industrial settings where historical data is often sparse and operating conditions change. The framework excels at few-shot learning, continuous adaptation, and benchmarking a wide range of forecasting models.
-
-Most industrial assets lack the long, tidy histories that conventional ML expects. Waiting years to collect data delays value creation.
+Equinor_Forecast is an open-source pipeline that delivers robust medium-term cumulative forecasts (8–16 weeks) for oil, gas, and renewables. It is designed for industrial settings where historical data is often sparse and operating conditions change. The framework excels at few-shot learning, continuous adaptation, and benchmarking a wide range of forecasting models. Most industrial assets lack the long, tidy histories that conventional ML expects. Waiting years to collect data delays value creation.
 
 ## 🌐 Two Forecasting Flows
 
@@ -166,9 +164,6 @@ PINN:
 * Physics module: Exponential / Arps / Pressure
 * Fused via residual weighting
 
-* Here’s a concise summary of the **Physics-Informed Strategy Integration** in the `Seq2Context` model:
-
----
 
 ### 7. 🔬 Physics-Informed Strategy Integration
 
@@ -190,8 +185,6 @@ The **Seq2Context** model enhances forecast accuracy by integrating **physics-in
 
 * **Combined Exponential-Arps**
   Hybrid approach that merges exponential and Arps behaviors to handle a wide range of production dynamics.
-
----
 
 ### 🧭 8. Online vs Batch: Trade-Offs
 
