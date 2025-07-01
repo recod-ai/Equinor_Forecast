@@ -187,3 +187,14 @@ OPSD provides renewable energy generation data for wind, solar, and load forecas
 - **Data Location**: `data/OPSD/time_series_30`
 - **Geographic Scope**: European power system data with high temporal resolution
 
+### Evaluation Methodology
+
+Model performance is evaluated using multiple metrics with particular emphasis on:
+
+- **SMAPE (Symmetric Mean Absolute Percentage Error)** - Primary evaluation metric providing scale-independent performance assessment
+- **MAE (Mean Absolute Error)** - Absolute error measurement for direct comparison
+- **MSE (Mean Squared Error)** - Squared error metric emphasizing larger deviations
+- **Cumulative Performance Analysis** - Long-term forecasting accuracy assessment
+
+The evaluation framework includes comprehensive performance analysis across different datasets, wells, and forecasting horizons, with results visualized through detailed plots and statistical summaries. Model interpretability is enhanced through SHAP analysis, providing insights into feature importance and decision-making processes for improved understanding and trust in forecasting results.
+
