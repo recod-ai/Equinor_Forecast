@@ -37,10 +37,13 @@ def get_data_sources(opsd_type=None):
             "model_path": BASE_DIR / "VOLVE_MODELS" / "best_disruptive_model_VOLVE.keras",
             "target_column": "BORE_OIL_VOL",
             "variable_mapping": None,
+            # "features": [
+            #     "BORE_GAS_VOL", "CE", "delta_P", "PI", "AVG_DOWNHOLE_PRESSURE",
+            #     "BORE_WAT_VOL", "ON_STREAM_HRS", "Tempo_Inicio_Prod",
+            #     "Taxa_Declinio", "BORE_OIL_VOL",
+            # ],
             "features": [
-                "BORE_GAS_VOL", "CE", "delta_P", "PI", "AVG_DOWNHOLE_PRESSURE",
-                "BORE_WAT_VOL", "ON_STREAM_HRS", "Tempo_Inicio_Prod",
-                "Taxa_Declinio", "BORE_OIL_VOL",
+                "Tempo_Inicio_Prod", "BORE_GAS_VOL", "ON_STREAM_HRS", "BORE_OIL_VOL"
             ],
             "filter_postprocess": apply_custom_kalman_filter,
         },

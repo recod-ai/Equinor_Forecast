@@ -13,6 +13,8 @@ import logging
 
 from prediction.prediction_utils import make_predictions_for_all_wells, inverse_transform_predictions
 
+from forecast_pipeline.config import SHAP_ANALYSIS
+
 def insert_suffix_before_extension(base_path, suffix):
     base_path = Path(base_path)
     return base_path.with_stem(f"{base_path.stem}_{suffix}")
@@ -425,11 +427,7 @@ def run_shap_gradient_analysis(
     shap_raw = explainer(X_data)
     shap_vals_raw = get_shap_array(shap_raw) # Saída pode ser 4D: (samples, time, feats, outputs)
 
-    # ▼▼▼ INÍCIO DA CORREÇÃO ▼▼▼
-
     # O GradientExplainer retorna um SHAP value por neurônio de saída.
-    # Como nosso modelo tem 1 saída, a forma é (n_samples, time_steps, n_feats, 1).
-    # Precisamos remover essa última dimensão para obter (n_samples, time_steps, n_feats).
     if shap_vals_raw.ndim == 4 and shap_vals_raw.shape[-1] == 1:
         print(f"Formato SHAP original: {shap_vals_raw.shape}. Removendo a última dimensão.")
         shap_vals_3d = np.squeeze(shap_vals_raw, axis=-1)
@@ -499,97 +497,6 @@ def run_shap_gradient_analysis(
     print(f"✓ Artefatos SHAP salvos em {iter_dir.resolve()}")
 
 
-
-
-
-# src/analysis/sensitivity_analyzer.py
-
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from pathlib import Path
-
-def run_sensitivity_analysis(
-    model,
-    X_data, # Usaremos X_train ou X_test aqui
-    feature_names,
-    iteration,
-    well_name,
-    output_dir: Path
-):
-    """
-    Executa uma análise de sensibilidade manual (feature perturbation) e salva os resultados.
-
-    Args:
-        model: O modelo Keras "vivo" em memória.
-        X_data (np.ndarray): Um conjunto de dados para análise (ex: X_train).
-        feature_names (list): Lista com os nomes das features.
-        iteration (int): O número da iteração atual.
-        well_name (str): O nome do poço.
-        output_dir (Path): O diretório base para salvar os resultados.
-    """
-    print(f"\n--- [Sensitivity Analysis] Iniciando para a Iteração {iteration} - Poço {well_name} ---")
-
-    # Usar um pequeno número de amostras para a análise ser rápida
-    samples_to_analyze = X_data[:10].copy()
-    if len(samples_to_analyze) == 0:
-        print("[Sensitivity Analysis] Sem dados para analisar. Pulando.")
-        return
-
-    # 1. Obter as previsões de linha de base com os dados originais
-    base_predictions = model.predict(samples_to_analyze, verbose=0)
-
-    feature_importance = {}
-
-    # 2. Iterar sobre cada feature, perturbá-la e medir o impacto
-    num_features = samples_to_analyze.shape[2]
-    for i in range(num_features):
-        feature_name = feature_names[i]
-        
-        # Criar uma cópia dos dados para perturbar
-        perturbed_data = samples_to_analyze.copy()
-        
-        # Perturbar a feature i "zerando-a" (substituindo pelo valor médio do background, ou 0 se for escalonado)
-        # Para dados escalonados, 0 pode não ser a melhor referência. Vamos usar a média da feature.
-        perturbation_value = np.mean(samples_to_analyze[:, :, i])
-        perturbed_data[:, :, i] = perturbation_value # "Desliga" a feature
-        
-        # Fazer predições com a feature perturbada
-        perturbed_predictions = model.predict(perturbed_data, verbose=0)
-        
-        # Calcular o impacto: a média da mudança absoluta no erro
-        # (pode ser MSE, MAE, etc. Vamos usar a diferença absoluta na predição)
-        impact = np.mean(np.abs(base_predictions - perturbed_predictions))
-        feature_importance[feature_name] = impact
-    
-    # --- 3. Gerar e Salvar Resultados ---
-    well_name_safe = well_name.replace('/', '_').replace(' ', '_')
-    iter_output_dir = output_dir / f"iter_{iteration}"
-    iter_output_dir.mkdir(parents=True, exist_ok=True)
-    
-    print(f"Salvando resultados em: {iter_output_dir}")
-    
-    # Criar um DataFrame com os resultados
-    importance_df = pd.DataFrame(
-        list(feature_importance.items()),
-        columns=['Feature', 'Importance (Impact)']
-    ).sort_values(by='Importance (Impact)', ascending=False)
-    
-    # Salvar o CSV
-    importance_df.to_csv(iter_output_dir / "feature_importance.csv", index=False)
-    
-    # Gerar o gráfico de barras
-    plt.figure(figsize=(10, 6))
-    plt.barh(importance_df['Feature'], importance_df['Importance (Impact)'])
-    plt.xlabel('Impacto na Previsão (Mudança Média Absoluta)')
-    plt.title(f'Importância das Features - Poço {well_name} - Iteração {iteration}')
-    plt.gca().invert_yaxis()
-    plt.tight_layout()
-    plt.savefig(iter_output_dir / "feature_importance_bar.png")
-    plt.close()
-    
-    print(f"--- [Sensitivity Analysis] Análise para a Iteração {iteration} concluída. ---")
-
 _MODEL_CACHE: dict[str, tf.keras.Model] = {}
 def _get_or_create_model(model_path: str, X_train: np.ndarray, *, architecture_name: str):
     if model_path in _MODEL_CACHE:
@@ -631,34 +538,27 @@ def fine_tune_and_predict_well(args):  # noqa: D401
         for epoch in range(25):
             model.train_on_batch(X_train_r[-2:], y_train[-2:])
 
-
-
         # 🔽 ANÁLISE SHAP ON-THE-FLY 🔽
-        # if control_iteration in [1, 500, 1000, 1500, 2000, 2500, 3000]:
-        #     # Em vez de salvar o modelo, ou além de salvar, chamamos a análise.
-
-        #     # print('X_train_r shape', X_train_r.shape)
-        #     # print('X_train_r head', X_train_r[:5])
+        if control_iteration in [1, 500, 1000, 1500, 2000, 2500, 3000] and SHAP_ANALYSIS:
             
-        #     # --- Bloco de salvamento (pode manter se quiser os snapshots) ---
-        #     # suffix = f"iter{control_iteration}_well{well.replace('/', '_')}"
-        #     # save_path = Path(model_path).with_stem(f"{Path(model_path).stem}_{suffix}")
-        #     # model.save(save_path)
-        #     # print(f"[SAVE] Modelo salvo: {save_path}")
-        #     # --- Fim do bloco de salvamento ---
+            # --- Bloco de salvamento (pode manter se quiser os snapshots) ---
+            # suffix = f"iter{control_iteration}_well{well.replace('/', '_')}"
+            # save_path = Path(model_path).with_stem(f"{Path(model_path).stem}_{suffix}")
+            # model.save(save_path)
+            # print(f"[SAVE] Modelo salvo: {save_path}")
 
-        #     # --- Chamada para a Análise SHAP ---
-        #     run_shap_gradient_analysis(
-        #         model=model,
-        #         X_data=X_train_r,
-        #         feature_names=['Prod_Start_Time', 'BORE_GAS_VOL', 'ON_STREAM_HRS', 'BORE_OIL_VOL_LAG_7', 
-        #                        'BORE_OIL_VOL_LAG_6', 'BORE_OIL_VOL_LAG_5', 'BORE_OIL_VOL_LAG_4', 
-        #                        'BORE_OIL_VOL_LAG_3', 'BORE_OIL_VOL_LAG_2', 'BORE_OIL_VOL_LAG_1', 
-        #                        'BORE_OIL_VOL_MEAN_LAG'], # Você precisará passar isso através dos 'args'
-        #         iteration=control_iteration,
-        #         well_name=well,
-        #         output_dir=Path('SHAP') # Passar o caminho base para os resultados
-        #     )
+            # --- Chamada para a Análise SHAP ---
+            run_shap_gradient_analysis(
+                model=model,
+                X_data=X_train_r,
+                feature_names=['Prod_Start_Time', 'BORE_GAS_VOL', 'ON_STREAM_HRS', 'BORE_OIL_VOL_LAG_7', 
+                               'BORE_OIL_VOL_LAG_6', 'BORE_OIL_VOL_LAG_5', 'BORE_OIL_VOL_LAG_4', 
+                               'BORE_OIL_VOL_LAG_3', 'BORE_OIL_VOL_LAG_2', 'BORE_OIL_VOL_LAG_1', 
+                               'BORE_OIL_VOL_MEAN_LAG'], # Você precisará passar isso através dos 'args'
+                iteration=control_iteration,
+                well_name=well,
+                output_dir=Path('SHAP') # Passar o caminho base para os resultados
+            )
     else:
         # GBR/XGB path – still stateless
         model = train_and_evaluate_XGB(X_train, y_train, control_iteration=control_iteration, model_path = 'models/Model.json', update_rounds=10)

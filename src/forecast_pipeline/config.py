@@ -255,3 +255,119 @@ EXPERIMENT_CONFIGURATIONS_4: Dict[str, List[Dict[str, Any]]] = {
         {"selected_features": ["GB_GBN_wind_generation_tax", "GB_GBN_wind_generation_actual"]},
     ]
 }
+
+
+# =============================================================================
+# X. FEW-SHOT PREDICTION SETTINGS
+# =============================================================================
+from pathlib import Path
+from enum import Enum
+from dataclasses import dataclass, field
+from typing import List
+
+
+SHAP_ANALYSIS = False
+
+class ExecutionMode(Enum):
+    """Available execution modes."""
+    SIMPLE = 'simple'
+    MANIFEST = 'manifest'
+    SENSITIVITY = 'sensitivity'
+
+
+@dataclass(frozen=True)
+class SensitivityConfig:
+    """Configuration for sensitivity analysis."""
+    window_sizes: List[int] = field(default_factory=lambda: [3, 7, 14, 21])
+    forecast_horizons: List[int] = field(default_factory=lambda: [14, 28, 56, 70, 94, 112])
+    datasets_filter: List[str] = field(default_factory=lambda: ["UNISIM", "VOLVE", "OPSD"])
+    architecture: str = 'Generic'
+
+
+@dataclass(frozen=True)
+class SimpleConfig:
+    """Configuration for simple execution mode."""
+    datasets_filter: List[str] = field(default_factory=lambda: ["UNISIM", "VOLVE", "OPSD"])
+
+
+@dataclass(frozen=True)
+class ManifestConfig:
+    """Configuration for manifest execution mode."""
+    path: Path = field(default_factory=lambda: Path.cwd().parent.parent / "output_manifest" / "manifest.csv")
+    output_notebooks_dir: Path = field(default_factory=lambda: Path.cwd().parent.parent / "output_notebooks")
+
+
+@dataclass(frozen=True)
+class Config:
+    """Top-level execution control configuration."""
+    start_fresh: bool = False
+    project_root: Path = field(default_factory=lambda: Path.cwd().parent.parent)
+    execution_mode: ExecutionMode = ExecutionMode.SIMPLE
+    sensitivity: SensitivityConfig = field(default_factory=SensitivityConfig)
+    simple: SimpleConfig = field(default_factory=SimpleConfig)
+    manifest: ManifestConfig = field(default_factory=ManifestConfig)
+    template_notebook: str = "base_pipeline.ipynb"
+    max_concurrent_jobs: int = 12
+    generate_manifest_script: Path = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            'generate_manifest_script',
+            self.project_root / "src" / "generate_manifest.py"
+        )
+
+# --- Definição de Temas ---
+themes = {
+    "minimal": {"text": "#333333", "bg": "#FFFFFF", "accent": "#4CAF50", "grid": "#DDDDDD"},
+    "dark": {"text": "#F0F0F0", "bg": "#2C2C2C", "accent": "#76B947", "grid": "#555555"}
+}
+
+class AggregationMode(Enum):
+    SIMPLE = 'simple'
+    MANIFEST = 'manifest'
+    SENSITIVITY = 'sensitivity'
+
+@dataclass(frozen=True)
+class AnalysisConfig:
+    aggregation_mode: AggregationMode = AggregationMode.SIMPLE
+    exclude_datasets: List[str] = field(default_factory=lambda: ["UNISIM_IV"])
+    top_n_configs: int = 3
+    project_root: Path = Path.cwd().parent.parent
+    output_notebooks_dir: Path = field(init=False)
+    manifest_path: Path = field(init=False)
+    config_dir: Path = field(init=False)
+    custom_dataset_order: List[str] = field(default_factory=lambda: ["VOLVE", "UNISIM", "OPSD"])
+    table_theme: str = "dark"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, 'output_notebooks_dir', self.project_root / "notebooks/output_notebooks")
+        object.__setattr__(self, 'manifest_path', self.project_root / "output_manifest" / "manifest.csv")
+        object.__setattr__(self, 'config_dir', self.project_root / "src" / "experiment_configs")
+
+config = AnalysisConfig()
+
+
+if config.aggregation_mode == AggregationMode.MANIFEST:
+    print(f"Showing top {config.top_n_configs} configurations details")
+
+if config.aggregation_mode == AggregationMode.MANIFEST:
+    print(f"Checking manifest at: '{config.manifest_path}'")
+    if not config.manifest_path.exists():
+        print("WARNING: Manifest file not found. Run 'generate_manifest.py' first.")
+    print(f"Checking config directory at: '{config.config_dir}'")
+    if not config.config_dir.exists():
+        print("WARNING: Config directory not found.")
+
+
+def validate_config(config: Config) -> None:
+    """
+    Validates execution mode and existence of manifest when required.
+    Raises:
+        ValueError: If execution mode is invalid.
+    """
+    if config.execution_mode not in ExecutionMode:
+        raise ValueError("EXECUTION_MODE deve ser 'simple', 'manifest' ou 'sensitivity'.")
+    if config.execution_mode == ExecutionMode.MANIFEST and not config.manifest.path.exists():
+        print(f"WARNING: Manifest file not found at '{config.manifest.path}'.")
+        print("Please run the script 'src/generate_manifest.py' first.")
