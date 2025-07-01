@@ -4,6 +4,8 @@
 
 Equinor_Forecast is an open-source pipeline that delivers robust medium-term cumulative forecasts (8–16 weeks) for oil, gas, and renewables. It is designed for industrial settings where historical data is often sparse and operating conditions change. The framework excels at few-shot learning, continuous adaptation, and benchmarking a wide range of forecasting models.
 
+Most industrial assets lack the long, tidy histories that conventional ML expects. Waiting years to collect data delays value creation.
+
 ## 🌐 Two Forecasting Flows
 
 ### **Flow 1 — Online Few-Shot Training**
@@ -40,6 +42,17 @@ Equinor_Forecast is an open-source pipeline that delivers robust medium-term cum
 *   **🔬 Built-in Interpretability:** Tracks feature importance over time using a longitudinal SHAP analysis.
 
 ![Overview](Overview.png)
+
+### Datasets
+
+| Domain              | Dataset         | Key Facts                               |
+| ------------------- | --------------- | --------------------------------------- |
+| Oil & gas           | **Volve**       | 4 wells, daily, target = BORE\_OIL\_VOL |
+| Synthetic reservoir | **UNISIM-II-H** | 10 producers, 3 263 days, target = QOOB |
+| Renewables          | **OPSD** (GB)   | Wind (30 min→1 d), Solar & Load (12 h)  |
+
+![Pipeline Architecture](Data_Pipeline.png)
+
 
 ---
 
