@@ -97,7 +97,7 @@ Equinor_Forecast/
 └── output_manifest/      # Generated artefacts
 ```
 
-### 3. Repository Structure
+### 🧰 3. Repository Structure
 
 The repository is organized into several key directories, each serving a specific purpose in the forecasting pipeline:
 
@@ -154,7 +154,7 @@ The notebooks directory contains the primary execution environment for the forec
 
 - **`shap.ipynb`** - Model interpretability analysis using SHAP (SHapley Additive exPlanations) values to understand feature importance and model decision-making processes.
 
-### Datasets
+### 🧪 4. Datasets
 
 The framework supports three primary datasets representing different aspects of energy forecasting:
 
@@ -187,7 +187,7 @@ OPSD provides renewable energy generation data for wind, solar, and load forecas
 - **Data Location**: `data/OPSD/time_series_30`
 - **Geographic Scope**: European power system data with high temporal resolution
 
-### Evaluation Methodology
+### 📊 5. Evaluation Methodology
 
 Model performance is evaluated using multiple metrics with particular emphasis on:
 
@@ -197,4 +197,70 @@ Model performance is evaluated using multiple metrics with particular emphasis o
 - **Cumulative Performance Analysis** - Long-term forecasting accuracy assessment
 
 The evaluation framework includes comprehensive performance analysis across different datasets, wells, and forecasting horizons, with results visualized through detailed plots and statistical summaries. Model interpretability is enhanced through SHAP analysis, providing insights into feature importance and decision-making processes for improved understanding and trust in forecasting results.
+
+### 6. 🧬 SHAP Analysis (Online only):
+
+* Mean absolute SHAP per timestep
+* Gini + Spearman metrics over time
+* Beeswarm visualizations for interpretability
+
+### 🧩 7. Algorithms & Methods
+
+Deep Learning:
+
+* **N-Beats, NHiTS**: Residual block architectures
+* **TiDE (+ RIN)**: Long-range attention w/ stability layers
+* **NLinear**: Simple but effective linear baseline
+
+Traditional:
+
+* **ARIMA, AutoARIMA**: Classical autoregression
+* **XGBoost**: Gradient-boosted trees
+
+PINN:
+
+* Transformer + CNN + LSTM core
+* Physics module: Exponential / Arps / Pressure
+* Fused via residual weighting
+
+* Here’s a concise summary of the **Physics-Informed Strategy Integration** in the `Seq2Context` model:
+
+---
+
+### 8. 🔬 Physics-Informed Strategy Integration
+
+The **Seq2Context** model enhances forecast accuracy by integrating **physics-informed strategies** alongside deep learning. A **factory pattern** manages these strategies, enabling flexible, modular selection based on domain knowledge and data characteristics.
+
+#### Key Strategies:
+
+* **Exponential Decay**
+  Models natural production decline using exponential decay (`y(t) = y₀ * exp(-λt)`). Stable and interpretable; ideal for reservoir pressure depletion.
+
+* **Arps Decline**
+  Generalizes production decline via exponential, hyperbolic, or harmonic curves. Auto-selects the best fit and quantifies uncertainty.
+
+* **Static Pressure**
+  Incorporates reservoir pressure data to model the physics behind flow and depletion. Especially useful in pressure-monitored systems.
+
+* **Weighted Ensemble**
+  Learns optimal blending of multiple physics strategies, adapting to dataset characteristics for improved forecast robustness.
+
+* **Combined Exponential-Arps**
+  Hybrid approach that merges exponential and Arps behaviors to handle a wide range of production dynamics.
+
+---
+
+### 🧭 8. Online vs Batch: Trade-Offs
+
+| Strategy   | Pros                     | Cons                    |
+| ---------- | ------------------------ | ----------------------- |
+| **Online** | Real-time updates, fast  | Drift-prone, local-only |
+| **Batch**  | Physics + global context | Needs historical volume |
+
+| Approach    | How It Works               | Pros                      | Cons                          |
+| ----------- | -------------------------- | ------------------------- | ----------------------------- |
+| Incremental | Predict `y_{t+1}` then sum | Stepwise interpretability | Error drift over time         |
+| Direct      | Predict `Y_t` in one shot  | No compounding error      | Must extrapolate large values |
+
+**Equinor\_Forecast** lets you **combine both**, choosing fit-for-purpose flow per deployment scenario.
 
