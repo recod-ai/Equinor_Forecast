@@ -353,7 +353,8 @@ The Data Pipeline is the foundation of the Equinor\_Forecast system, responsible
 **Usage:**
 The pipeline is imported and used through simple Python functions, allowing straightforward integration into forecasting workflows.
 
-!(Data_Pipeline.png)
+![Pipeline Architecture](Data_Pipeline.png)
+
 
 
 
