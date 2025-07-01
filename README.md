@@ -67,6 +67,8 @@ After ingesting a new point, the model is fine-tuned and produces forecasts for 
 
 Deep models update on the two newest samples; XGBoost refreshes on the last 50.
 
+![Online Overview](Online.png)
+
 ---
 
 ## 4 Model Portfolio
