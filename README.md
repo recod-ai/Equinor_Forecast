@@ -69,7 +69,7 @@ The pipeline transforms heterogeneous time-series into cumulative, lagged, norma
 
 ## 🚀 Getting Started
 
-### 1. Installation
+### ⚖️ 1. Installation
 
 Clone the repository and install the required dependencies.
 
@@ -79,7 +79,7 @@ cd Equinor_Forecast
 pip install -r requirements.txt
 ```
 
-### 2. Repository Map
+### 🧩 2. Repository Map
 
 ```text
 Equinor_Forecast/
@@ -97,64 +97,7 @@ Equinor_Forecast/
 └── output_manifest/      # Generated artefacts
 ```
 
-### 🧰 3. Repository Structure
-
-The repository is organized into several key directories, each serving a specific purpose in the forecasting pipeline:
-
-### Core Directories
-
-- **`notebooks/`** - The execution hub containing all Jupyter notebooks for experiments and analysis
-  - **`darts/`** - Notebooks implementing Darts library-based forecasting models
-  - **`forecast/`** - Custom forecasting implementations and experimental notebooks
-- **`src/`** - Source code containing the core forecasting pipeline and utilities
-  - **`forecast_pipeline/`** - Main pipeline implementation with configuration and execution logic
-  - **`common/`** - Shared utilities and common functionality
-  - **`data/`** - Data loading and preprocessing modules
-  - **`evaluation/`** - Model evaluation and metrics calculation
-  - **`models/`** - Machine learning model implementations
-  - **`prediction/`** - Prediction and inference modules
-  - **`statistical/`** - Statistical methods
-- **`data/`** - Dataset storage and data files
-- **`experiments/`** - Experimental configurations and results
-- **`output_manifest/`** - Output files and result manifests
-
-### Model-Specific Directories
-
-- **`VOLVE_MODELS/`** - Pre-trained models and configurations for Volve dataset
-- **`UNISIM_MODELS/`** - Models trained on UNISIM reservoir simulation data  
-- **`OPSD_MODELS/`** - Models for Open Power System Data renewable energy forecasting
-
-## Main Notebooks
-
-The notebooks directory contains the primary execution environment for the forecasting framework:
-
-### Darts Implementation (`notebooks/darts/`)
-
-- **`DARTS.ipynb`** - Comprehensive implementation of the Darts forecasting pipeline featuring multiple state-of-the-art models including TiDE, NLinear, N-Beats, NHiTS, and TiDE+RIN. This notebook provides an end-to-end workflow from data loading and preprocessing through model training, forecasting, and evaluation with support for multiple datasets and automated hyperparameter configuration.
-
-- **`DARTS_Hybrid.ipynb`** - Advanced hybrid modeling approach combining multiple Darts models for improved forecasting accuracy through ensemble methods and model fusion techniques.
-
-### Custom Forecasting Implementation (`notebooks/forecast/`)
-
-- **`base_pipeline.ipynb`** - Foundation pipeline implementation providing the core framework for custom forecasting models and experimental setups.
-
-- **`energy_based_forecast.ipynb`** - Specialized forecasting models designed specifically for energy sector applications, incorporating domain-specific features and physics-informed modeling approaches.
-
-- **`forecast_DL.ipynb`** - Deep learning forecasting implementations featuring custom neural network architectures optimized for time-series prediction in energy applications.
-
-- **`forecast_XGB.ipynb`** - XGBoost-based forecasting models providing gradient boosting solutions for time-series prediction with feature engineering and hyperparameter optimization.
-
-- **`launch_jobs_wells.ipynb`** - Automated job execution system for running forecasting experiments across multiple oil wells and production scenarios.
-
-- **`physics_feature_analysis.ipynb`** - Analysis of physics-based features and their impact on forecasting accuracy, incorporating domain knowledge from reservoir engineering and production optimization.
-
-- **`results_analysis.ipynb`** - Comprehensive analysis and visualization of forecasting results, including performance comparisons, error analysis, and model interpretation.
-
-- **`run_experiments.ipynb`** - Experimental execution framework for running systematic forecasting experiments across different models, datasets, and configurations.
-
-- **`shap.ipynb`** - Model interpretability analysis using SHAP (SHapley Additive exPlanations) values to understand feature importance and model decision-making processes.
-
-### 🧪 4. Datasets
+### 🧪 3. Datasets
 
 The framework supports three primary datasets representing different aspects of energy forecasting:
 
@@ -187,7 +130,7 @@ OPSD provides renewable energy generation data for wind, solar, and load forecas
 - **Data Location**: `data/OPSD/time_series_30`
 - **Geographic Scope**: European power system data with high temporal resolution
 
-### 📊 5. Evaluation Methodology
+### 📊 4. Evaluation Methodology
 
 Model performance is evaluated using multiple metrics with particular emphasis on:
 
@@ -198,13 +141,13 @@ Model performance is evaluated using multiple metrics with particular emphasis o
 
 The evaluation framework includes comprehensive performance analysis across different datasets, wells, and forecasting horizons, with results visualized through detailed plots and statistical summaries. Model interpretability is enhanced through SHAP analysis, providing insights into feature importance and decision-making processes for improved understanding and trust in forecasting results.
 
-### 6. 🧬 SHAP Analysis (Online only):
+### 5. 🧬 SHAP Analysis (Online only):
 
 * Mean absolute SHAP per timestep
 * Gini + Spearman metrics over time
 * Beeswarm visualizations for interpretability
 
-### 🧩 7. Algorithms & Methods
+### 🧩 6. Algorithms & Methods
 
 Deep Learning:
 
@@ -227,7 +170,7 @@ PINN:
 
 ---
 
-### 8. 🔬 Physics-Informed Strategy Integration
+### 7. 🔬 Physics-Informed Strategy Integration
 
 The **Seq2Context** model enhances forecast accuracy by integrating **physics-informed strategies** alongside deep learning. A **factory pattern** manages these strategies, enabling flexible, modular selection based on domain knowledge and data characteristics.
 
@@ -263,4 +206,61 @@ The **Seq2Context** model enhances forecast accuracy by integrating **physics-in
 | Direct      | Predict `Y_t` in one shot  | No compounding error      | Must extrapolate large values |
 
 **Equinor\_Forecast** lets you **combine both**, choosing fit-for-purpose flow per deployment scenario.
+
+### 🧰 10. Repository Details
+
+The repository is organized into several key directories, each serving a specific purpose in the forecasting pipeline:
+
+Core Directories
+
+- **`notebooks/`** - The execution hub containing all Jupyter notebooks for experiments and analysis
+  - **`darts/`** - Notebooks implementing Darts library-based forecasting models
+  - **`forecast/`** - Custom forecasting implementations and experimental notebooks
+- **`src/`** - Source code containing the core forecasting pipeline and utilities
+  - **`forecast_pipeline/`** - Main pipeline implementation with configuration and execution logic
+  - **`common/`** - Shared utilities and common functionality
+  - **`data/`** - Data loading and preprocessing modules
+  - **`evaluation/`** - Model evaluation and metrics calculation
+  - **`models/`** - Machine learning model implementations
+  - **`prediction/`** - Prediction and inference modules
+  - **`statistical/`** - Statistical methods
+- **`data/`** - Dataset storage and data files
+- **`experiments/`** - Experimental configurations and results
+- **`output_manifest/`** - Output files and result manifests
+
+Model-Specific Directories
+
+- **`VOLVE_MODELS/`** - Pre-trained models and configurations for Volve dataset
+- **`UNISIM_MODELS/`** - Models trained on UNISIM reservoir simulation data  
+- **`OPSD_MODELS/`** - Models for Open Power System Data renewable energy forecasting
+
+### 🧠 11. Main Notebooks
+
+The notebooks directory contains the primary execution environment for the forecasting framework:
+
+Darts Implementation (`notebooks/darts/`)
+
+- **`DARTS.ipynb`** - Comprehensive implementation of the Darts forecasting pipeline featuring multiple state-of-the-art models including TiDE, NLinear, N-Beats, NHiTS, and TiDE+RIN. This notebook provides an end-to-end workflow from data loading and preprocessing through model training, forecasting, and evaluation with support for multiple datasets and automated hyperparameter configuration.
+
+- **`DARTS_Hybrid.ipynb`** - Advanced hybrid modeling approach combining multiple Darts models for improved forecasting accuracy through ensemble methods and model fusion techniques.
+
+Custom Forecasting Implementation (`notebooks/forecast/`)
+
+- **`base_pipeline.ipynb`** - Foundation pipeline implementation providing the core framework for custom forecasting models and experimental setups.
+
+- **`energy_based_forecast.ipynb`** - Specialized forecasting models designed specifically for energy sector applications, incorporating domain-specific features and physics-informed modeling approaches.
+
+- **`forecast_DL.ipynb`** - Deep learning forecasting implementations featuring custom neural network architectures optimized for time-series prediction in energy applications.
+
+- **`forecast_XGB.ipynb`** - XGBoost-based forecasting models providing gradient boosting solutions for time-series prediction with feature engineering and hyperparameter optimization.
+
+- **`launch_jobs_wells.ipynb`** - Automated job execution system for running forecasting experiments across multiple oil wells and production scenarios.
+
+- **`physics_feature_analysis.ipynb`** - Analysis of physics-based features and their impact on forecasting accuracy, incorporating domain knowledge from reservoir engineering and production optimization.
+
+- **`results_analysis.ipynb`** - Comprehensive analysis and visualization of forecasting results, including performance comparisons, error analysis, and model interpretation.
+
+- **`run_experiments.ipynb`** - Experimental execution framework for running systematic forecasting experiments across different models, datasets, and configurations.
+
+- **`shap.ipynb`** - Model interpretability analysis using SHAP (SHapley Additive exPlanations) values to understand feature importance and model decision-making processes.
 
