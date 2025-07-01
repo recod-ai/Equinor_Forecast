@@ -79,7 +79,7 @@ cd Equinor_Forecast
 pip install -r requirements.txt
 ```
 
-## 10 Repository Map
+### 2. Repository Map
 
 ```text
 Equinor_Forecast/
@@ -97,7 +97,7 @@ Equinor_Forecast/
 └── output_manifest/      # Generated artefacts
 ```
 
-## Repository Structure
+### 3. Repository Structure
 
 The repository is organized into several key directories, each serving a specific purpose in the forecasting pipeline:
 
