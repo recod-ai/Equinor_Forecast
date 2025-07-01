@@ -154,11 +154,36 @@ The notebooks directory contains the primary execution environment for the forec
 
 - **`shap.ipynb`** - Model interpretability analysis using SHAP (SHapley Additive exPlanations) values to understand feature importance and model decision-making processes.
 
-## 2. Model Portfolio
-* Category	Representative Models	Training Mode
-* PINN Hybrid	Seq2Context (CNN + LSTM + Physics)	Batch
-* Few-shot Online	XGBoost, Custom DL Architectures	Online
-* Deep Learning	N-Beats, NHiTS, TiDE, TiDE+RIN, NLinear	Online
-* Statistical	ARIMA, AutoARIMA, Linear Regression	Online
-* Evaluation & Interpretability
+### Datasets
+
+The framework supports three primary datasets representing different aspects of energy forecasting:
+
+#### Volve Oil Field Dataset
+
+The Volve dataset represents real-world oil production data from Equinor's Volve oil field in the North Sea. This dataset includes production data from multiple wells with the following characteristics:
+
+- **Wells**: 15/9-F14, 15/9-F12, 15/9-F11, and additional production wells
+- **Target Variable**: BORE_OIL_VOL (oil production volume)
+- **Data Location**: `data/volve/Volve_Equinor`
+- **Features**: Production rates, pressure measurements, and operational parameters
+
+#### UNISIM Reservoir Simulation Data
+
+UNISIM provides synthetic but realistic reservoir simulation data for testing and validation of forecasting models:
+
+- **Production Wells**: Prod-1 through Prod-10, P16 (UNISIM-IV)
+- **Target Variables**: Q00B (production rate), BORE_OIL_VOL
+- **Data Locations**: 
+  - `data/unisim/production.c`
+  - `data/UNISIM-IV-2026/Well_IV.csv`
+- **Features**: Simulated production data with controlled reservoir parameters
+
+#### Open Power System Data (OPSD)
+
+OPSD provides renewable energy generation data for wind, solar, and load forecasting:
+
+- **Energy Types**: Wind generation, Solar generation, Load demand
+- **Target Variable**: GB_GBN_<type>_generation_actual
+- **Data Location**: `data/OPSD/time_series_30`
+- **Geographic Scope**: European power system data with high temporal resolution
 
