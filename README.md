@@ -16,6 +16,22 @@ Equinor_Forecast is an open-source pipeline that delivers robust medium-term cum
 🧠 Compatible with XGBoost, Custom DL, ARIMA, N-Beats, etc.
 
 
+![Online Training Diagram](Online.png)
+
+
+### **Flow 2 — PINNs with Batch Few-Shot Training**
+
+**Use Case:** Domain-informed long-horizon forecasts
+
+🧪 Trained once on \~40% of data
+📦 Encodes physics via exponential, Arps, pressure-based strategies
+🎯 Combines deep temporal encoders with physics baselines
+⚖️ Predicts production using blended residual learning
+
+
+![PINNs Overview](PINN.png)
+
+
 ## Key Features
 
 *   **🎯 Cumulative Forecasting:** Predicts aggregated sums (e.g., total production over 8 weeks) to smooth noise and aid strategic planning.
