@@ -355,6 +355,64 @@ The pipeline is imported and used through simple Python functions, allowing stra
 
 ![Pipeline Architecture](Data_Pipeline.png)
 
+# Physics-Informed Neural Networks
 
+## Overview
 
+The PINN (Seq2Context model) represents the flagship architecture of the Equinor_Forecast system, implementing a sophisticated hybrid neural network that combines modern deep learning techniques with physics-informed strategies specifically designed for energy sector forecasting. This model addresses the unique challenges of cumulative production forecasting by integrating temporal sequence modeling with domain-specific knowledge about energy production physics.
 
+The architecture represents a significant advancement in time series forecasting for energy applications, moving beyond traditional statistical methods and generic deep learning approaches to incorporate the fundamental physics governing energy production processes. The model's name "Seq2Context" reflects its core functionality: transforming input sequences into rich contextual representations that capture both temporal dependencies and physical constraints inherent in energy production systems.
+
+The model's design philosophy centers on the recognition that energy production forecasting requires more than pattern recognition in historical data. Successful forecasting must account for the underlying physical processes, equipment constraints, reservoir characteristics, and operational parameters that drive production behavior. The Seq2Context architecture achieves this integration through a multi-branch design that processes temporal sequences through both data-driven neural networks and physics-informed computational pathways.
+
+## Architectural Design
+
+### Core Neural Network Components
+
+The Seq2Context model implements a sophisticated multi-layer architecture that processes temporal sequences through several specialized components, each designed to capture different aspects of the forecasting problem.
+
+**Transformer Encoder Block**: The foundation of the model's temporal processing capability lies in a transformer encoder block that implements multi-head self-attention mechanisms. This component excels at capturing long-range temporal dependencies that are crucial for understanding production trends over extended periods. The transformer architecture allows the model to selectively attend to relevant historical time points, automatically learning which past observations are most informative for predicting future production values.
+
+The transformer encoder utilizes eight attention heads with a model dimension of 512, providing sufficient capacity to capture complex temporal relationships while maintaining computational efficiency. The multi-head attention mechanism enables the model to focus on different types of temporal patterns simultaneously, such as short-term fluctuations, medium-term trends, and long-term seasonal cycles that characterize energy production data.
+
+Positional encoding is incorporated to provide the transformer with explicit temporal information, ensuring that the model understands the sequential nature of the input data. This is particularly important for energy forecasting applications where the timing of observations carries significant meaning for production planning and operational decision-making.
+
+**Convolutional Layers**: Following the transformer encoder, the model employs two one-dimensional convolutional layers designed to extract local temporal patterns and features that complement the global attention mechanisms of the transformer. The first convolutional layer uses 64 filters with a kernel size of 3, capturing short-term temporal patterns and local variations in production rates.
+
+The second convolutional layer expands to 128 filters while maintaining the same kernel size, allowing the model to learn more complex local patterns and feature combinations. These convolutional layers are particularly effective at identifying recurring patterns such as daily operational cycles, weekly maintenance schedules, or equipment-specific production signatures that appear consistently in energy production data.
+
+Max pooling operations follow the convolutional layers to reduce temporal resolution while preserving the most important features. This dimensionality reduction improves computational efficiency and helps prevent overfitting by focusing on the most salient temporal patterns.
+
+**Bidirectional LSTM Layer**: The model incorporates a bidirectional Long Short-Term Memory (LSTM) layer with 256 units to provide sequence memory and temporal context understanding. The bidirectional design processes sequences in both forward and backward directions, enabling the model to consider future context when interpreting past observations.
+
+This bidirectional processing is particularly valuable for energy forecasting applications where production patterns often exhibit anticipatory behavior. For example, production rates might begin declining before scheduled maintenance periods, or increase in anticipation of favorable market conditions. The bidirectional LSTM captures these complex temporal relationships that unidirectional models might miss.
+
+The LSTM layer includes dropout regularization with a rate of 0.3 to prevent overfitting and improve generalization to new production scenarios. The return_sequences parameter is set to True, ensuring that the full temporal sequence is preserved for downstream processing by the physics-informed components.
+
+### Physics-Informed Strategy Integration
+
+A distinguishing feature of the Seq2Context model is its integration of physics-informed strategies that incorporate domain knowledge about energy production processes. This integration is achieved through a specialized branch that operates in parallel with the neural network components, providing physics-based insights that complement data-driven learning.
+
+**Physics Strategy Factory**: The model implements a factory pattern for creating and managing different physics-informed strategies. This design allows for flexible selection and combination of physical models based on the specific characteristics of the forecasting problem and the available domain knowledge.
+
+The factory pattern provides several advantages for energy forecasting applications. It enables easy experimentation with different physical models, supports dynamic strategy selection based on data characteristics, and facilitates the integration of new physics-based approaches as they are developed. The factory also manages the parameterization of physical models, ensuring that reservoir properties, equipment specifications, and operational constraints are properly incorporated into the forecasting process.
+
+**Exponential Decay Strategy**: This strategy implements exponential decline models commonly used in oil and gas production forecasting. The exponential decay model assumes that production rates decline exponentially over time according to the equation y(t) = y₀ * exp(-λt), where y₀ represents the initial production rate and λ represents the decline constant.
+
+The exponential decay strategy is particularly effective for modeling the natural decline of oil wells due to reservoir pressure depletion. The model learns to estimate the decline parameters from historical data while incorporating physical constraints that ensure realistic decline behavior. This physics-informed approach provides more stable and interpretable forecasts compared to purely data-driven methods.
+
+**Arps Decline Strategy**: The model implements the industry-standard Arps decline curves, which provide a more flexible framework for modeling production decline behavior. The Arps model supports three types of decline: exponential (b=0), hyperbolic (0<b<1), and harmonic (b=1), where b represents the decline exponent.
+
+The Arps decline strategy automatically selects the most appropriate decline type based on the characteristics of the historical production data. This adaptive approach ensures that the physical model accurately represents the underlying reservoir and well behavior, leading to more accurate forecasts. The strategy also incorporates uncertainty quantification, providing confidence intervals around the decline curve predictions.
+
+**Weighted Ensemble Strategy**: This strategy combines multiple physics-informed approaches using learned weights that reflect the relative importance of different physical models for the specific forecasting scenario. The ensemble approach recognizes that energy production systems often exhibit complex behavior that cannot be captured by a single physical model.
+
+The weighted ensemble strategy learns optimal combination weights through the training process, automatically balancing the contributions of different physical models based on their predictive accuracy for the specific dataset. This adaptive weighting ensures that the most relevant physical insights are emphasized while less applicable models receive reduced influence.
+
+**Static Pressure Strategy**: This strategy incorporates reservoir pressure information into the forecasting process, recognizing that production rates are fundamentally driven by pressure differentials between the reservoir and the wellbore. The static pressure strategy models the relationship between reservoir pressure and production rates, accounting for pressure depletion over time.
+
+The strategy is particularly valuable for reservoir-level forecasting where pressure data is available from multiple wells or pressure monitoring systems. By incorporating pressure information, the model can better predict production behavior under different operational scenarios and reservoir conditions.
+
+**Combined Exponential-Arps Strategy**: This hybrid strategy combines the simplicity of exponential decline models with the flexibility of Arps decline curves, providing a robust approach for handling diverse production scenarios. The combined strategy automatically selects the most appropriate model components based on the characteristics of the historical data and the forecasting requirements.
+
+![PINNs Overview](PINN.png)
