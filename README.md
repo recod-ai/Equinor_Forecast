@@ -190,7 +190,7 @@ The repository is organized into several key directories, each serving a specifi
   - **`evaluation/`** - Model evaluation and metrics calculation
   - **`models/`** - Machine learning model implementations
   - **`prediction/`** - Prediction and inference modules
-  - **`statistical/`** - Statistical forecasting methods
+  - **`statistical/`** - Statistical methods
 - **`data/`** - Dataset storage and data files
 - **`experiments/`** - Experimental configurations and results
 - **`output_manifest/`** - Output files and result manifests
@@ -313,5 +313,47 @@ Model performance is evaluated using multiple metrics with particular emphasis o
 - **Cumulative Performance Analysis** - Long-term forecasting accuracy assessment
 
 The evaluation framework includes comprehensive performance analysis across different datasets, wells, and forecasting horizons, with results visualized through detailed plots and statistical summaries. Model interpretability is enhanced through SHAP analysis, providing insights into feature importance and decision-making processes for improved understanding and trust in forecasting results.
+
+Here’s a clear and concise summary in English of the ideas from your text:
+
+---
+
+**DATA PIPELINE**
+
+The Data Pipeline is the foundation of the Equinor\_Forecast system, responsible for ingesting, processing, and preparing time series data from various energy sector sources. Its architecture is robust and scalable, ensuring data quality and consistency across heterogeneous datasets, including oil production, reservoir simulation, and renewable energy.
+
+**Core Modules:**
+
+* `data_loading.py`: Standardizes data ingestion from multiple sources, providing unified APIs for consistent data structures.
+* `data_preparation.py`: Handles complex preprocessing for time series forecasting, including sliding window creation, feature engineering, and cumulative forecasting transformations.
+
+**Supported Data Sources:**
+
+* **Volve Oil Field Dataset:** Real-world oil production data, reflecting authentic industry patterns and noise.
+* **UNISIM Reservoir Simulation:** Synthetic, controlled simulation data for validation and testing.
+* **OPSD Renewable Energy Dataset:** Actual renewable generation data, introducing challenges like volatility and seasonality.
+
+**Technical Highlights:**
+
+* **Sliding Window Creation:** Uses configurable window sizes (default 7 days) for input features and flexible forecast horizons to prepare data for multi-step forecasting.
+* **Feature Engineering:**
+
+  * Temporal shift aligns targets with inputs.
+  * Lagged and static feature construction captures dependencies.
+  * Cumulative transformation smooths noise and aligns with total production forecasting needs.
+  * Adaptive normalization improves generalization and prevents data leakage.
+
+**Configuration and Extensibility:**
+
+* Highly customizable via configuration for window sizes, forecast horizons, and normalization methods.
+* Modular design allows easy integration of new data sources and custom preprocessing functions.
+* Supports parallel processing for large-scale data.
+* Centralized configuration, experiment tracking, and preprocessing version control ensure consistency and reproducibility.
+
+**Usage:**
+The pipeline is imported and used through simple Python functions, allowing straightforward integration into forecasting workflows.
+
+!(Data_Pipeline.png)
+
 
 
