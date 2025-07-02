@@ -1,8 +1,32 @@
-# Equinor_Forecast
+# Equinor Forecast
 
 **An Framework for Energy-Sector Time-Series Prediction**
 
-Equinor_Forecast is an open-source pipeline that delivers robust medium-term cumulative forecasts (8–16 weeks) for oil, gas, and renewables. It is designed for industrial settings where historical data is often sparse and operating conditions change. The framework excels at few-shot learning, continuous adaptation, and benchmarking a wide range of forecasting models. Most industrial assets lack the long, tidy histories that conventional ML expects. Waiting years to collect data delays value creation.
+This repository brings together two complementary research efforts aimed at advancing time-series forecasting in the energy sector. The included tools address both the challenge of making robust predictions with limited data and the integration of domain knowledge into machine learning models. The pipeline supports cumulative forecasts for oil, gas, and renewables over medium-term horizons (8–16 weeks), and is designed for industrial settings where data is sparse and conditions evolve.
+
+---
+
+## Few-Shot Learning for Time-Series Forecasting
+
+* Adapts to changing conditions with incremental, online learning
+* Requires minimal historical data—ideal for real-world, data-scarce settings
+* 2-shot fine-tuning with every new sample, enabling continuous model updates
+* Performs strongly across oil, gas, wind, solar, and energy load datasets
+* Outperforms standard models, even without complex architectures -- diverse horizons  (8–16 weeks)
+* Built-in interpretability for practical industrial use
+
+---
+
+## Residual Physics-Informed Neural Networks (RePINN)
+
+* Fuses physical decline-curve models with deep residual learning
+* Supports a variety of physical strategies and neural context extractors
+* Learnable fusion enables clear separation of physical and data-driven contributions
+* Maintains physical plausibility while boosting forecast accuracy
+* Demonstrates superior performance on production data
+* Enhances transparency and adaptability for critical energy-sector applications
+
+---
 
 ## 🌐 Two Forecasting Flows
 
