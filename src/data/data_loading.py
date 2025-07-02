@@ -481,12 +481,14 @@ def engineer_features(
 
     # df["BORE_GAS_VOL"]  = np.log1p(df["BORE_GAS_VOL"])
 
-    # --------------------------------------------------- 1. Conversões
-    # df["BORE_OIL_VOL"]  = df["BORE_OIL_VOL"].apply(m3d2stbd)      # stb/d
-    # df["BORE_GAS_VOL"]  = df["BORE_GAS_VOL"].apply(m3d2scfd)      # scf/d
-    # df["BORE_WAT_VOL"]  = df["BORE_WAT_VOL"].apply(m3d2stbd)
-    # df["AVG_DOWNHOLE_PRESSURE"] = df["AVG_DOWNHOLE_PRESSURE"].apply(bar2psi)  # psi
-    # df["AVG_WHP_P"]            = df["AVG_WHP_P"].apply(bar2psi)
+    if not cum_sum:
+
+        # --------------------------------------------------- 1. Conversões
+        df["BORE_OIL_VOL"]  = df["BORE_OIL_VOL"].apply(m3d2stbd)      # stb/d
+        df["BORE_GAS_VOL"]  = df["BORE_GAS_VOL"].apply(m3d2scfd)      # scf/d
+        df["BORE_WAT_VOL"]  = df["BORE_WAT_VOL"].apply(m3d2stbd)
+        df["AVG_DOWNHOLE_PRESSURE"] = df["AVG_DOWNHOLE_PRESSURE"].apply(bar2psi)  # psi
+        df["AVG_WHP_P"]            = df["AVG_WHP_P"].apply(bar2psi)
 
     # --------------------------------------------------- 2. ΔP e PI
     df["delta_P"] = df["AVG_DOWNHOLE_PRESSURE"] - df["AVG_WHP_P"]

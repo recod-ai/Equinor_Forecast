@@ -1,0 +1,229 @@
+sequenceDiagram
+    title ▸ Daily Update & Forecast Cycle ◂
+
+    %% ─────────── Participants ───────────
+    actor     D  as ✱ Data Stream
+    participant W  as Rolling Window<br/>(size = 150)
+    participant Tr as Model Trainer
+    participant V  as Validator
+    participant S  as Scheduler
+    participant P  as Predictor
+
+    %% ─────────── Daily Loop ───────────
+    loop ⏳ Each Day
+        %% 1 — Ingest & Windowing
+        D  ->>+ W : ingest(new sample)
+        W  -->>  W : trim to 150
+        Note right of W : Sliding time-window
+
+        %% 2 — Train & Validate
+        W  ->>+ Tr : training_batch()
+        Tr ->>  Tr : fine-tune()
+        Tr ->>  V  : metrics()
+        deactivate Tr
+
+        %% 3 — Scheduler Decisions
+        alt ✅ Improved metrics
+            V  ->>  S : keep training
+            S  -->> Tr : adjust_lr()
+        else ❌ Degraded
+            V  ->>  S : early_stop
+            S  -->> Tr : stop_training()
+        end
+
+        %% 4 — Forecast
+        Tr ->>+ P  : updated_weights
+        P  ->>+ P  : multi-horizon forecast()
+        P  -->>- D : predictions
+        deactivate P
+    end
+
+
+flowchart TD
+    %% ──────────────────────────  INPUT  ──────────────────────────
+    subgraph Input Layer
+        A0["Time-Series Input (batch, lag, features)"]
+        A0 -- "split features" --> A1["Data Features"]
+        A0 -- "split features" --> A2["Physics Features"]
+    end
+
+    %% ───────────  DATA-DRIVEN PATH: CONTEXT EXTRACTION  ───────────
+    subgraph Data-Driven Context Path
+        direction TB
+        A1 --> B1["Context Extractor (TCN | CNN | RNN | …)"]
+    end
+
+    %% ─────────────  PHYSICS-INFORMED PATH: BASELINE  ─────────────
+    subgraph Physics-Informed Branch
+        direction TB
+        A2 --> C1["Physics Strategy Factory"]
+        C1 --> C2["Chosen Strategy (Exponential · Arps · Static · …)"]
+        C2 --> C3["Physics Baseline Q_phys(t)"]
+    end
+
+    %% ────────────  RESIDUAL LEARNING & CONTEXT FUSION  ───────────
+    subgraph Context Fusion & Residual
+        direction TB
+        B1 --> D1["Context Fuser (FiLM | Gating | Bias-Scale | Concat)"]
+        D1 --> D2["Residual Estimate ΔQ(t)"]
+    end
+
+    %% ─────────────────────  BLENDING LAYER  ──────────────────────
+    subgraph Blending Layer
+        direction TB
+        C3 --> E1["Weighted Blend α·Q_phys + (1-α)·ΔQ"]
+        D2 --> E1
+    end
+
+    %% ────────────────────────  OUTPUT  ───────────────────────────
+    E1 --> F1["Forecast Output (horizon)"]
+
+    %% ───────────────────────  STYLES  ────────────────────────────
+    classDef input   fill:#e1f5fe,stroke:#0288d1,color:#01579b;
+    classDef context fill:#bbdefb,stroke:#1976d2,color:#0d47a1;
+    classDef physics fill:#c8e6c9,stroke:#2e7d32,color:#1b5e20;
+    classDef fusion  fill:#ffe0b2,stroke:#ef6c00,color:#e65100;
+    classDef blend   fill:#d1c4e9,stroke:#6a1b9a,color:#4a148c;
+    classDef output  fill:#f8bbd0,stroke:#c2185b,color:#880e4f;
+
+    class A0,A1,A2 input;
+    class B1 context;
+    class C1,C2,C3 physics;
+    class D1,D2 fusion;
+    class E1 blend;
+    class F1 output;
+
+
+flowchart TD
+    A[Raw Time Series Data] --> B[Data Loading Module]
+    B --> C{Data Source Type}
+    
+    C -->|Volve| D[Oil Production Data BORE_OIL_VOL]
+    C -->|UNISIM| E[Reservoir Simulation Q00B]
+    C -->|OPSD| F[Renewable Energy Wind/Solar/Load]
+    
+    D --> G[Data Validation & Cleaning]
+    E --> G
+    F --> G
+    
+    G --> H[Sliding Window Creation window_size = 7 days]
+    H --> I[Target Extraction by shifting target]
+    I --> J[Feature Matrix Construction X with lagged features]
+    J --> K[Cumulative Transformation Daily rates → Running sums]
+    K --> L[Ratio Normalization Scale by local mean]
+    L --> M[Train/Validation Split Time-aware splitting]
+    M --> N[Ready for Model Training]
+    
+    style A fill:#ffebee
+    style G fill:#e3f2fd
+    style H fill:#e8f5e8
+    style K fill:#fff3e0
+    style N fill:#f3e5f5
+
+graph TB
+    %% ─────────────────────── DATA LAYER ───────────────────────
+    subgraph "Data Sources"
+        direction TB
+        DS1["Volve Oil Field"]
+        DS2["UNISIM Reservoir Sim"]
+        DS3["OPSD Wind · Solar · Load"]
+        class DS1,DS2,DS3 source;
+    end
+
+    %% ─────────────────── PRE-PROCESSING LAYER ──────────────────
+    subgraph "Pre-processing Pipeline"
+        direction TB
+        PP1["Load & Quality Checks"]
+        PP2["Sliding Window Lag = 7"]
+        PP3["Cumulative Target 8 – 16 wk"]
+        PP4["Normalization Ratio / Std"]
+        class PP1,PP2,PP3,PP4 process;
+    end
+
+    %% ──────────────────── MODEL PORTFOLIO ─────────────────────
+    subgraph "Model Portfolio"
+        direction TB
+
+        %% Batch-trained
+        subgraph "PINNs 📦"
+            M1["Seq2Context PINN (batch train 40 % history)"]
+        end
+
+        %% Online learners
+        subgraph "Online Models ⚙️"
+            M2["Custom DL (Seq2Value · Seq2Fuser)"]
+            M3["Darts DL (N-Beats · NHiTS · TiDE …)"]
+            M4["Statistical (ARIMA / AutoARIMA)"]
+            M5["XGBoost"]
+        end
+    end
+
+    %% ───────────────── TRAINING STRATEGIES ────────────────────
+    subgraph "Training Strategy"
+        direction TB
+        T1["Batch Fit single pass"]
+        T2["Online Loop rolling window = 150 daily fine-tune"]
+        class T1 strategyBatch;
+        class T2 strategyOnline;
+    end
+
+    %% ──────────── PREDICTION & ENSEMBLE LAYER ────────────────
+    subgraph "Prediction & Ensemble"
+        direction TB
+        P1["Individual Forecasts"]
+        class P1, predict;
+    end
+
+    %% ───────────────────── EVALUATION ─────────────────────────
+    subgraph "Evaluation"
+        direction TB
+        E1["SMAPE · MAE · MSE"]
+        E2["SHAP Importance"]
+        E3["Cumulative Error"]
+        class E1,E2,E3 eval;
+    end
+
+    %% ───────────────────── OUTPUT LAYER ───────────────────────
+    subgraph "Outputs"
+        direction TB
+        O1["Multi-horizon Forecasts"]
+        O2["Results Storage"]
+        class O1,O2 output;
+    end
+
+    %% ──────────────────────── FLOWS ───────────────────────────
+    DS1 --> PP1
+    DS2 --> PP1
+    DS3 --> PP1
+    PP4 --> M1
+    PP4 --> M2
+    PP4 --> M3
+    PP4 --> M4
+    PP4 --> M5
+
+    M1 --> T1
+    M2 --> T2
+    M3 --> T2
+    M4 --> T2
+    M5 --> T2
+
+    T1 --> P1
+    T2 --> P1
+
+    P1 --> E1
+
+
+    E1 --> O1
+    E2 --> O1
+    E3 --> O1
+    O1 --> O2
+
+    %% ─────────────────────── STYLES ───────────────────────────
+    classDef source      fill:#bbdefb,stroke:#1565c0,color:#0d47a1;
+    classDef process     fill:#dcedc8,stroke:#558b2f,color:#33691e;
+    classDef strategyBatch  fill:#e6ee9c,stroke:#9e9d24,color:#827717;
+    classDef strategyOnline fill:#fff59d,stroke:#fbc02d,color:#f57f17;
+    classDef predict     fill:#ffe0b2,stroke:#ef6c00,color:#e65100;
+    classDef eval        fill:#d1c4e9,stroke:#6a1b9a,color:#4a148c;
+    classDef output      fill:#f8bbd0,stroke:#ad1457,color:#880e4f;
+
