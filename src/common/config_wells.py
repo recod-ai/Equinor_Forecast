@@ -50,7 +50,7 @@ def get_data_sources(opsd_type=None):
         # --- UNISIM_IV ---
         {
             "name": "UNISIM_IV",
-            "wells": ["P16"],
+            "wells": ["P11"],
             "load_params": {
                 "data_path": DATA_DIR / "UNISIM-IV-2026" / "Well_{well}_UNISIM-IV.csv",
                 "serie_name": "BORE_OIL_VOL",
@@ -119,7 +119,7 @@ DATA_SOURCES = [
     {
         "name":  "VOLVE",
         "wells": ["15/9-F-14", "15/9-F-12", "15/9-F-11", "15/9-F-15 D"],
-        # "wells": ["15/9-F-12", "15/9-F-14"],
+        "wells": ["15/9-F-14"],
         "load_params": {
             "data_path":  DATA_DIR / "volve" / "Volve_Equinor.csv",
             "serie_name": "BORE_OIL_VOL",
@@ -138,7 +138,7 @@ DATA_SOURCES = [
     # "UNISIM-IV"
     {
         "name": "UNISIM_IV",
-        "wells": ["P16"],
+        "wells": ["P11"],
         "load_params": {
             # apontar para a pasta onde estão seus CSVs: well_P11_UNISIM-IV.csv, etc.
             "data_path": DATA_DIR / "UNISIM-IV-2026" / "Well_{well}_UNISIM-IV.csv",
