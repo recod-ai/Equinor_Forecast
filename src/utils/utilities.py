@@ -191,10 +191,21 @@ def check_data(*datasets):
     else:
         print("⚠️ Some issues were found in the datasets.")
 
-import os
 import joblib
-import tensorflow as tf
+import os
+import warnings
+import logging
 
+"""Suppress TensorFlow and addon warnings for a cleaner console."""
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['ABSL_LOG_LEVEL'] = '3'
+warnings.filterwarnings(
+    'ignore',
+    category=UserWarning,
+    module='tensorflow_addons'
+)
+import tensorflow as tf
+tf.get_logger().setLevel('ERROR')
 
 # =====================================================
 # Utility Functions for Scaling Inversion

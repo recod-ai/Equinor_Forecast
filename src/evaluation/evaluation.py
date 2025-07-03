@@ -1,10 +1,3 @@
-# # alternativa: mantenha no topo mas força o backend *antes*
-# import os, matplotlib
-# os.environ.setdefault("MPLBACKEND", "Agg")
-# matplotlib.use("Agg", force=True)
-# import matplotlib.pyplot as plt
-
-
 from typing import Any, List, Dict, Callable
 import numpy as np
 from sklearn.metrics import r2_score
@@ -1517,14 +1510,6 @@ def organize_and_display_metrics(global_metrics_list, aggregated_metrics_list, c
 
 
 from typing import Sequence, Union, Optional, Any
-
-# Define a disruptive yet clean color palette
-# COLOR_PRIMARY = '#1ABC9C'  # Turquoise/Green Cyan
-# COLOR_SECONDARY = '#E74C3C' # Alizarin Crimson / Bright Red
-# COLOR_ACCENT_FILL = 'rgba(231, 76, 60, 0.15)' # Light, transparent version of secondary
-# COLOR_TEXT = '#34495E'      # Wet Asphalt / Dark Blue-Gray
-# COLOR_GRID = 'rgba(200, 200, 200, 0.3)' # Lighter Gray for grid
-# FONT_FAMILY = "Arial, sans-serif" # Clean, widely available font
 
 # --- More Sophisticated Palette ---
 COLOR_PRIMARY = '#0077B6'  # Strong Blue (Star Command Blue)

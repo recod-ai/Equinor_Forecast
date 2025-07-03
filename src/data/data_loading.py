@@ -198,6 +198,12 @@ class Unisim_IV_DataLoader(BaseDataLoader):
             logging.info("Normalized DataFrame to canonical feature set")
             log_invalid_values(df)
 
+            # plot_by_well_advanced(
+            #         df,
+            #         columns=[self.serie_name],
+            #         well=well,     
+            #     )
+
             return df
 
         except Exception:
@@ -482,7 +488,6 @@ def engineer_features(
     # df["BORE_GAS_VOL"]  = np.log1p(df["BORE_GAS_VOL"])
 
     if not cum_sum:
-
         # --------------------------------------------------- 1. Conversões
         df["BORE_OIL_VOL"]  = df["BORE_OIL_VOL"].apply(m3d2stbd)      # stb/d
         df["BORE_GAS_VOL"]  = df["BORE_GAS_VOL"].apply(m3d2scfd)      # scf/d

@@ -510,6 +510,8 @@ def _compile_model(
         optimizer=optimizer,
         loss=tf.keras.losses.MeanAbsoluteError(),
         metrics=[tf.keras.metrics.MeanSquaredError()],
+        # jit_compile=True,
+        steps_per_execution=32,
     )
     return model
 
@@ -552,7 +554,7 @@ def train_modern(
         model=model,
         lr_schedule=lr_schedule,
         weight_decay=weight_decay,
-        optimizer_type=optimizer_type
+        optimizer_type=optimizer_type,
     )
 
     steps_per_epoch = math.ceil(len(y) / batch_size)
@@ -561,24 +563,52 @@ def train_modern(
     callbacks = [
         SnapshotSaver(epochs=epochs, cycles=cycles, steps_per_epoch=steps_per_epoch),
         tf.keras.callbacks.EarlyStopping(patience=patience, restore_best_weights=True),
-        tf.keras.callbacks.ModelCheckpoint(
-            filepath=checkpoint_path,
-            save_best_only=True,
-            monitor='val_loss'
-        ),
+        # tf.keras.callbacks.ModelCheckpoint(
+        #     filepath=checkpoint_path,
+        #     save_best_only=True,
+        #     monitor='val_loss'
+        # ),
         tf.keras.callbacks.LearningRateScheduler(lambda step: lr_schedule(step), verbose=0),
     ]
 
+    # 1) Crie dataset ainda SEM batch
+    ds = tf.data.Dataset.from_tensor_slices((X, y))
+    
+    # 2) Divida ― left_size=proporção que vai ficar no primeiro pedaço
+    train_ds, val_ds = tf.keras.utils.split_dataset(
+        ds, left_size=1 - validation_split, shuffle=False, seed=42
+    )
+    
+    # 3) Aplique batch / cache / prefetch depois da divisão
+    def prepare(ds):
+        return (
+            ds.batch(batch_size)
+              .cache()
+              .prefetch(tf.data.AUTOTUNE)
+        )
+    
+    train_ds = prepare(train_ds)
+    val_ds   = prepare(val_ds)
+
     history = model.fit(
-        X,
-        y,
-        validation_split=validation_split,
+        train_ds,
+        validation_data=val_ds,
         epochs=epochs,
-        batch_size=batch_size,
         callbacks=callbacks,
-        shuffle=True,
         verbose=0,
     )
+
+
+    # history = model.fit(
+    #     X,
+    #     y,
+    #     validation_split=validation_split,
+    #     epochs=epochs,
+    #     batch_size=batch_size,
+    #     callbacks=callbacks,
+    #     shuffle=False,
+    #     verbose=0,
+    # )
 
     # Store snapshot weights
     model._snapshot_weights = [
@@ -920,7 +950,7 @@ def train_model(
     batch_size: int = 32,
     patience: int = 300,
     optimizer_type: str = 'adam',
-    initial_lr: float = 1e-4,
+    initial_lr: float = 1e-3,
     weight_decay: float = 1e-4,
     first_decay_steps: int = 100,
     checkpoint_path: str = 'best_model.keras',
