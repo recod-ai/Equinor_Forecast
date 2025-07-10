@@ -113,7 +113,7 @@ def process_chunks(
       final_val_pred:  np.ndarray, aggregated validation predictions
     """
     total = params["ensemble_models"]
-    chunk = min(25, total)
+    chunk = min(1, total)
     snaps = params.get("with_snapshots", 5)
     retries = 2
     skip = True
@@ -579,6 +579,7 @@ def evaluate_slices(
     )
 
 def run_single_job(job):
+
     """Orquestra um job completo, agora compatível com cenários/ band."""
     try:
         # 1. preparação -------------------------------------------------

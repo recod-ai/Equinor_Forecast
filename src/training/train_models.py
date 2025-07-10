@@ -361,39 +361,60 @@ def train_with_tape(
 
 
 # =============================================================================
-# Salva os Snapshots para usar com Ensembles
+# Análise: Curva de validação, Diversidade e Ensemble dos Snapshots
 # =============================================================================
-class SnapshotSaver(tf.keras.callbacks.Callback):
-    """
-    Guarda em memória o peso com menor val_loss dentro de cada ciclo
-    de CosineDecayRestarts.
-    """
-    def __init__(self, epochs: int, cycles: int, steps_per_epoch: int):
-        super().__init__()
-        self.epochs = epochs
-        self.cycles = cycles
-        self.steps_per_epoch = steps_per_epoch
 
-        self.epochs_per_cycle = math.ceil(epochs / cycles)
-        self.best_loss_cycle = [np.inf] * cycles
-        self.best_weights_cycle: List[List[np.ndarray]] = [None] * cycles  # type: ignore
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.set_loglevel("warning")
 
-    def on_epoch_end(self, epoch, logs=None):
-        logs = logs or {}
-        val_loss = logs.get("val_loss")
-        if val_loss is None:
-            return
 
-        cycle = epoch // self.epochs_per_cycle
-        if cycle >= self.cycles:            # pode acontecer por arredondamento
-            cycle = self.cycles - 1
+def plot_val_loss_snapshots(history, snapshot_epochs):
+    val_loss = history["val_loss"]
+    epochs = range(len(val_loss))
+    plt.figure(figsize=(9,5))
+    plt.plot(epochs, val_loss, label="Val Loss")
+    for i, epoch in enumerate(snapshot_epochs):
+        plt.axvline(epoch, color="r", linestyle="--", alpha=0.6, label="Snapshot" if i==0 else "")
+    plt.xlabel("Epoch")
+    plt.ylabel("Validation Loss")
+    plt.legend()
+    plt.title("Val Loss & Snapshots")
+    plt.show()
 
-        if val_loss < self.best_loss_cycle[cycle]:
-            self.best_loss_cycle[cycle] = val_loss
-            # faz uma cópia profunda (np.copy) para não ser sobrescrita
-            self.best_weights_cycle[cycle] = [
-                w.copy() for w in self.model.get_weights()
-            ]
+def compare_snapshots_weights(model, snapshot_weights):
+    # Distância Euclidiana entre snapshots
+    flattened = [np.concatenate([w.flatten() for w in weights]) for weights in snapshot_weights]
+    print("--- Distância Euclidiana entre Snapshots ---")
+    for i in range(len(flattened)):
+        for j in range(i+1, len(flattened)):
+            dist = np.linalg.norm(flattened[i] - flattened[j])
+            print(f"Distância entre snapshot {i} e {j}: {dist:.2e}")
+
+def evaluate_snapshots_and_ensemble(model, X_val, y_val, snapshot_weights, snapshot_epochs, history):
+    # a) Plota curva val_loss + snapshots
+    plot_val_loss_snapshots(history, snapshot_epochs)
+
+    # b) Checa distância dos pesos
+    compare_snapshots_weights(model, snapshot_weights)
+
+    # c) Avaliação individual e ensemble
+    individual_scores = []
+    all_preds = []
+    print("\n--- Avaliação de cada Snapshot ---")
+    for idx, weights in enumerate(snapshot_weights):
+        model.set_weights(weights)
+        preds = model.predict(X_val, verbose=0)
+        mse = np.mean((preds - y_val) ** 2)
+        print(f"Snapshot {idx} (epoch {snapshot_epochs[idx]}): Val MSE = {mse:.4f}")
+        all_preds.append(preds)
+        individual_scores.append(mse)
+    # Ensemble simples (média)
+    ensemble_preds = np.mean(np.stack(all_preds), axis=0)
+    ensemble_mse = np.mean((ensemble_preds - y_val) ** 2)
+    print(f"\nEnsemble: Val MSE = {ensemble_mse:.4f}")
+    return individual_scores, ensemble_mse
 
 
 
@@ -503,42 +524,222 @@ def _compile_model(
         optimizer = LAMB(learning_rate=lr_schedule, weight_decay=weight_decay, clipnorm=1.0)
     else:
         optimizer = tf.keras.optimizers.experimental.AdamW(
-            learning_rate=lr_schedule, weight_decay=weight_decay, clipnorm=1.0
+            learning_rate=lr_schedule, weight_decay=weight_decay, clipnorm=1.0, clipvalue=0.5
         )
+
+    training_losses = {
+        "out": tf.keras.losses.MeanAbsoluteError(),
+        "q_phys": tf.keras.losses.MeanAbsoluteError(),
+        "residual": tf.keras.losses.MeanAbsoluteError()
+    }
+    
 
     model.compile(
         optimizer=optimizer,
         loss=tf.keras.losses.MeanAbsoluteError(),
         metrics=[tf.keras.metrics.MeanSquaredError()],
-        # jit_compile=True,
-        steps_per_execution=32,
+        steps_per_execution=1,
     )
     return model
+
+
+"""
+Training strategy rationale: epochs, batch size, and cosine decay cycles
+-------------------------------------------------------------------------
+
+This training setup is designed to balance convergence speed, model stability, and generalization using CosineDecayRestarts and Snapshot Ensembling. 
+
+Key principles:
+- Larger batch sizes reduce update frequency per epoch and require more epochs or fewer cycles.
+- Cosine decay cycles must be long enough (≥10 epochs or ≥300 steps) to be meaningful.
+- Snapshot ensembles work best with 3–5 cycles and sufficient learning rate decay range per cycle.
+- Shuffle=True is recommended to avoid batch bias and promote better generalization.
+
+Practical combined recommendations:
+
+| Dataset Size     | Epochs | Batch Size | Cycles | Notes                                  |
+|------------------|--------|------------|--------|----------------------------------------|
+| Small (<10k)     | 100    | 32–64      | 3      | More steps, batches add regularization |
+| Medium (~100k)   | 100    | 64–128     | 5      | Balanced cycles and convergence        |
+| Large (1M+)      | 100–150| 128–256    | 3–5    | Long cycles, stable updates            |
+
+Tips:
+- Ensure steps_per_cycle ≥ 300 for stable cosine schedules.
+- Use shuffle=True unless preserving sequence across samples is required.
+- For Snapshot Ensembles, disable early stopping or set high patience.
+"""
+
+
+
+from common.common import create_internal_validation_set_from_disk
+
+# =============================================================================
+# Salva os Snapshots para usar com Ensembles + Armazena as epochs dos snapshots
+# =============================================================================
+class SnapshotSaver(tf.keras.callbacks.Callback):
+    def __init__(self, epochs, cycles, steps_per_epoch):
+        super().__init__()
+        self.epochs = epochs
+        self.cycles = cycles
+        self.steps_per_epoch = steps_per_epoch
+        self.epochs_per_cycle = math.ceil(epochs / cycles)
+        self.best_loss_cycle = [np.inf] * cycles
+        self.best_weights_cycle = [None] * cycles
+        self.snapshot_epochs = [None] * cycles
+        self.snapshot_val_losses = [None] * cycles  # <-- novo
+
+    def on_epoch_end(self, epoch, logs=None):
+        logs = logs or {}
+        val_loss = logs.get("val_loss")
+        if val_loss is None:
+            return
+
+        cycle = epoch // self.epochs_per_cycle
+        if cycle >= self.cycles:
+            cycle = self.cycles - 1
+
+        if val_loss < self.best_loss_cycle[cycle]:
+            self.best_loss_cycle[cycle] = val_loss
+            self.best_weights_cycle[cycle] = [w.copy() for w in self.model.get_weights()]
+            self.snapshot_epochs[cycle] = epoch
+            self.snapshot_val_losses[cycle] = val_loss
+
+
+def _prepare_validation_data(
+    X: Union[np.ndarray, List[np.ndarray]],
+    y: np.ndarray,
+    X_val: Optional[Union[np.ndarray, List[np.ndarray]]] = None,
+    y_val: Optional[np.ndarray] = None,
+    validation_split: float = 0.1,
+    mode: str = "hybrid"
+) -> tuple:
+    """
+    Prepare validation data according to the selected mode.
+
+    Parameters
+    ----------
+    X : array-like
+        Training features.
+    y : array-like
+        Training labels.
+    X_val : array-like, optional
+        Explicit validation features.
+    y_val : array-like, optional
+        Explicit validation labels.
+    validation_split : float
+        Proportion of X/y to split for validation (only used in 'classic' and 'hybrid' modes).
+    mode : str
+        How to assemble validation data. Options:
+            - 'classic': use only a split of X/y for validation.
+            - 'explicit': use only the explicit X_val/y_val provided.
+            - 'hybrid': combine both (default): split X/y and concatenate with explicit X_val/y_val.
+
+    Returns
+    -------
+    X_train, y_train, X_val_final, y_val_final : tuple
+        Split training data and validation data as per the selected mode.
+
+    Rationale
+    ---------
+    'hybrid' mode creates a more robust validation set by concatenating synthetically augmented data
+    (coming from the split) with the external validation data. This provides better signal for hyperparameter
+    selection, especially when synthetic data distributions differ from natural data.
+    """
+    import numpy as np
+    from sklearn.model_selection import train_test_split
+
+    if mode not in ("classic", "explicit", "hybrid"):
+        raise ValueError(f"Unknown validation mode: {mode}")
+
+    if mode == "classic" or (X_val is None or y_val is None):
+        # Only use a split of the training data
+        X_train, X_val_split, y_train, y_val_split = train_test_split(
+            X, y, test_size=validation_split, random_state=42
+        )
+        return X_train, y_train, X_val_split, y_val_split
+
+    if mode == "explicit":
+        # Only use provided validation data; all X/y become training
+        return X, y, X_val, y_val
+
+    if mode == "hybrid":
+        # Split a portion from training, then concatenate with provided validation data
+        X_train, X_val_split, y_train, y_val_split = train_test_split(
+            X, y, test_size=validation_split, random_state=42
+        )
+        if isinstance(X_val_split, list):
+            # For multi-input (list of arrays)
+            X_val_final = [np.concatenate([xv, xve], axis=0) for xv, xve in zip(X_val_split, X_val)]
+        else:
+            X_val_final = np.concatenate([X_val_split, X_val], axis=0)
+        y_val_final = np.concatenate([y_val_split, y_val], axis=0)
+        return X_train, y_train, X_val_final, y_val_final
+
+def select_best_snapshots_from_callback(
+    snapshot_callback,
+    earlystopping_callback=None,
+    epochs=None,
+    n_best=3,
+):
+    """
+    Retorna listas dos N melhores snapshots (pesos, epochs, val_losses) a partir do callback.
+    Se não houver snapshots, usa os pesos do EarlyStopping.
+    """
+    # Extrai snapshots válidos
+    snapshot_weights = [w for w in getattr(snapshot_callback, "best_weights_cycle", []) if w is not None]
+    snapshot_epochs  = [e for e in getattr(snapshot_callback, "snapshot_epochs", []) if e is not None]
+    snapshot_val_losses = [l for l in getattr(snapshot_callback, "snapshot_val_losses", []) if l is not None]
+
+    # Caso nenhum snapshot válido (fallback EarlyStopping)
+    if not snapshot_weights and earlystopping_callback is not None:
+        print("Warning: No snapshot cycles completed. Using best weights from EarlyStopping.")
+        snapshot_weights = [getattr(earlystopping_callback, "best_weights", None)]
+        snapshot_epochs = [epochs-1] if epochs is not None else [None]
+        snapshot_val_losses = [np.nan]
+
+    # Seleciona os N melhores snapshots pelo menor val_loss
+    if len(snapshot_weights) > n_best and len(snapshot_val_losses) == len(snapshot_weights):
+        idx_best = np.argsort(snapshot_val_losses)[:n_best]
+        snapshot_weights = [snapshot_weights[i] for i in idx_best]
+        snapshot_epochs = [snapshot_epochs[i] for i in idx_best]
+        snapshot_val_losses = [snapshot_val_losses[i] for i in idx_best]
+    
+    return snapshot_weights, snapshot_epochs, snapshot_val_losses
+
+
 
 # =============================================================================
 # Função moderna de Treino para assegurar a convergência
 # =============================================================================
+
 def train_modern(
     model: tf.keras.Model,
     X: Union[np.ndarray, List[np.ndarray]],
     y: np.ndarray,
+    X_val: Optional[Union[np.ndarray, List[np.ndarray]]] = None,
+    y_val: Optional[np.ndarray] = None, 
     epochs: int = 300,
     batch_size: int = 32,
     patience: int = 100,
     optimizer_type: str = "adam",
-    initial_lr: float = 5e-3,
+    initial_lr: float = 1e-3,
     weight_decay: float = 1e-4,
     checkpoint_path: str = 'best_model.keras',
     validation_split: float = 0.1,
-    cycles: int = 3,
-    use_mixed_precision: bool = True
-) -> Tuple[tf.keras.Model, dict]:
+    cycles: int = 7,
+    use_mixed_precision: bool = True,
+    validation_mode: str = "hybrid"
+) -> Tuple[tf.keras.Model, dict, tuple]:
     """
-    Train the model with a modern signature and optional mixed precision.
-    """
+    Train the model with a modern signature and flexible validation set creation.
 
-    # if use_mixed_precision:
-    #     tf.keras.mixed_precision.set_global_policy('mixed_float16')
+    Parameters
+    ----------
+    ...
+    validation_mode : str
+        One of 'classic', 'explicit', or 'hybrid' (default). Controls how the validation set is formed.
+        See `_prepare_validation_data` for details.
+    """
 
     # Build learning rate COSINE
     lr_schedule = _get_lr_schedule_cosine_restarts(
@@ -546,7 +747,8 @@ def train_modern(
         epochs=epochs,
         batch_size=batch_size,
         num_samples=len(y),
-        warmup_ratio=0.1
+        warmup_ratio=0.1,
+        cycles=cycles
     )
 
     # Compile the model
@@ -560,69 +762,53 @@ def train_modern(
     steps_per_epoch = math.ceil(len(y) / batch_size)
 
     # Prepare callbacks
+    snapshot_callback = SnapshotSaver(epochs=epochs, cycles=cycles, steps_per_epoch=steps_per_epoch)
     callbacks = [
-        SnapshotSaver(epochs=epochs, cycles=cycles, steps_per_epoch=steps_per_epoch),
-        tf.keras.callbacks.EarlyStopping(patience=patience, restore_best_weights=True),
-        # tf.keras.callbacks.ModelCheckpoint(
-        #     filepath=checkpoint_path,
-        #     save_best_only=True,
-        #     monitor='val_loss'
-        # ),
-        tf.keras.callbacks.LearningRateScheduler(lambda step: lr_schedule(step), verbose=0),
+        snapshot_callback,
+        tf.keras.callbacks.EarlyStopping(
+            monitor='val_loss', 
+            patience=patience, 
+            restore_best_weights=True
+        ),
+        tf.keras.callbacks.LearningRateScheduler(lr_schedule, verbose=0),
     ]
 
-    # 1) Crie dataset ainda SEM batch
-    ds = tf.data.Dataset.from_tensor_slices((X, y))
-    
-    # 2) Divida ― left_size=proporção que vai ficar no primeiro pedaço
-    train_ds, val_ds = tf.keras.utils.split_dataset(
-        ds, left_size=1 - validation_split, shuffle=False, seed=42
+    # Prepare training and validation sets
+    X_train, y_train, X_val_final, y_val_final = _prepare_validation_data(
+        X, y, X_val, y_val, validation_split, mode=validation_mode
     )
-    
-    # 3) Aplique batch / cache / prefetch depois da divisão
-    def prepare(ds):
-        return (
-            ds.batch(batch_size)
-              .cache()
-              .prefetch(tf.data.AUTOTUNE)
-        )
-    
-    train_ds = prepare(train_ds)
-    val_ds   = prepare(val_ds)
 
     history = model.fit(
-        train_ds,
-        validation_data=val_ds,
+        X_train,
+        y_train,
+        validation_data=(X_val_final, y_val_final),
         epochs=epochs,
+        batch_size=batch_size,
         callbacks=callbacks,
+        shuffle=True,
         verbose=0,
     )
 
+    snapshot_weights, snapshot_epochs, _ = select_best_snapshots_from_callback(
+        snapshot_callback, 
+        earlystopping_callback=callbacks[1], 
+        epochs=epochs, 
+        n_best=8
+    )
 
-    # history = model.fit(
-    #     X,
-    #     y,
-    #     validation_split=validation_split,
-    #     epochs=epochs,
-    #     batch_size=batch_size,
-    #     callbacks=callbacks,
-    #     shuffle=False,
-    #     verbose=0,
-    # )
-
-    # Store snapshot weights
-    model._snapshot_weights = [
-        w for w in callbacks[0].best_weights_cycle if w is not None
-    ]
-
+    model._snapshot_weights = snapshot_weights
     history_evaluation(history)
-
+    evaluate_snapshots_and_ensemble(model, X_val_final, y_val_final, snapshot_weights, snapshot_epochs, history.history)
     return model, history.history
+
+
 
 
 def _train_individual_block(
     X_train: Union[np.ndarray, List[np.ndarray]],
     y_train: np.ndarray,
+    X_val: Optional[Union[np.ndarray, List[np.ndarray]]],
+    y_val: Optional[np.ndarray], 
     model_args: dict,
     freeze_trend: bool,
     freeze_physics: bool,
@@ -646,8 +832,10 @@ def _train_individual_block(
     )
     model, _ = train_modern(
         model=model,
-        X=X_train,
-        y=y_train,
+        X_train=X_train,
+        y_train=y_train,
+        X_val=X_val, 
+        y_val=y_val,
         epochs=epochs,
         batch_size=batch_size,
         patience=patience,
@@ -680,6 +868,8 @@ def _assemble_fusion_model(
 def train_hybrid_staged(
     X_train: Union[np.ndarray, List[np.ndarray]],
     y_train: np.ndarray,
+    X_val: Optional[Union[np.ndarray, List[np.ndarray]]],
+    y_val: Optional[np.ndarray], 
     model_args: dict,
     epochs: int,
     batch_size: int,
@@ -700,6 +890,8 @@ def train_hybrid_staged(
     trend_model = _train_individual_block(
         X_train=X_train,
         y_train=y_train,
+        X_val=X_val, 
+        y_val=y_val, 
         model_args=model_args,
         freeze_trend=False,
         freeze_physics=True,
@@ -717,6 +909,8 @@ def train_hybrid_staged(
     physics_model = _train_individual_block(
         X_train=X_train,
         y_train=y_train,
+        X_val=X_val, 
+        y_val=y_val,
         model_args=model_args,
         freeze_trend=True,
         freeze_physics=False,
@@ -737,6 +931,8 @@ def train_hybrid_staged(
         model=fusion_model,
         X=X_train,
         y=y_train,
+        X_val=X_val, 
+        y_val=y_val,
         epochs=epochs,
         batch_size=batch_size,
         patience=patience,
@@ -753,6 +949,8 @@ def train_hybrid_staged(
         model=fusion_model,
         X=X_train,
         y=y_train,
+        X_val=X_val, 
+        y_val=y_val,
         epochs=epochs,
         batch_size=batch_size,
         patience=patience,
@@ -764,50 +962,10 @@ def train_hybrid_staged(
 
     return fusion_model, history
 
-def compile_for_stage(model, optimizer, loss_name, loss_fn='mse'):
-    # loss_name: string com o nome da saída que vamos treinar,
-    # ex: 'physics_scaled', 'extractor_head_output', 'final_forecast'
-    model.compile(
-        optimizer=optimizer,
-        loss={ loss_name: loss_fn },
-        metrics={ loss_name: loss_fn }
-    )
-
-def fit_stage(model, X, y, loss_name, 
-              epochs, batch_size, patience, ckpt_path, val_split):
-    # y aqui é array (batch, horizon), mas passamos num dict
-    y_dict = { loss_name: y }
-    callbacks = [
-        tf.keras.callbacks.EarlyStopping(
-            monitor=f'{loss_name}_loss', 
-            patience=patience, 
-            restore_best_weights=True
-        ),
-        tf.keras.callbacks.ModelCheckpoint(
-            ckpt_path, 
-            save_best_only=True, 
-            monitor=f'val_loss',
-            verbose=1
-        )
-    ]
-    history = model.fit(
-        X, y_dict,
-        epochs=epochs,
-        batch_size=batch_size,
-        validation_split=val_split,
-        callbacks=callbacks,
-        verbose=0
-    )
-    history_evaluation(history)
-    return history.history
-
-from tensorflow.keras.models import Model
-
-from pathlib import Path
-from tensorflow.keras.models import Model
-
 def train_hybrid_three_stages(
     X, y,
+    X_val: Optional[Union[np.ndarray, List[np.ndarray]]],
+    y_val: Optional[np.ndarray], 
     build_kwargs: dict,
     epochs_per_stage: int,
     batch_size: int,
@@ -816,7 +974,7 @@ def train_hybrid_three_stages(
     val_split: float = 0.1,
     cycles: int = 5,
     use_mixed_precision: bool = True
-) -> Tuple[Model, dict]:
+) -> Tuple[tf.keras.Model, dict]:
     # ——————————————————————————————————————————
     # 1) monta o modelo “dict” com cabeça de extrator
     # ——————————————————————————————————————————
@@ -859,6 +1017,8 @@ def train_hybrid_three_stages(
     _, h1 = train_modern(
         model=stage1,
         X=X, y=y,
+        X_val=X_val, 
+        y_val=y_val, 
         epochs=epochs_per_stage,
         batch_size=batch_size,
         patience=patience,
@@ -889,6 +1049,8 @@ def train_hybrid_three_stages(
     _, h2 = train_modern(
         model=stage2,
         X=X, y=y,
+        X_val=X_val, 
+        y_val=y_val, 
         epochs=epochs_per_stage,
         batch_size=batch_size,
         patience=patience,
@@ -919,6 +1081,8 @@ def train_hybrid_three_stages(
     _, h3 = train_modern(
         model=stage3,
         X=X, y=y,
+        X_val=X_val, 
+        y_val=y_val,
         epochs=epochs_per_stage,
         batch_size=batch_size,
         patience=patience,
@@ -946,11 +1110,13 @@ def train_model(
     model: tf.keras.Model,
     X_train: Union[np.ndarray, List[np.ndarray]],
     y_train: np.ndarray,
+    X_val: Optional[Union[np.ndarray, List[np.ndarray]]] = None,
+    y_val: Optional[np.ndarray] = None,                         
     epochs: int = 500,
     batch_size: int = 32,
     patience: int = 300,
     optimizer_type: str = 'adam',
-    initial_lr: float = 1e-3,
+    initial_lr: float = 1e-2,
     weight_decay: float = 1e-4,
     first_decay_steps: int = 100,
     checkpoint_path: str = 'best_model.keras',
@@ -982,6 +1148,8 @@ def train_model(
         return train_hybrid_staged(
             X_train,
             y_train,
+            X_val,
+            y_val,   
             model_args,
             epochs,
             batch_size,
@@ -1005,6 +1173,8 @@ def train_model(
 
         return train_hybrid_three_stages(
             X_train, y_train,
+            X_val,
+            y_val, 
             build_kwargs = model_args,
             epochs_per_stage = epochs,
             batch_size = batch_size,
@@ -1016,6 +1186,8 @@ def train_model(
         model=model,
         X=X_train,
         y=y_train,
+        X_val=X_val, 
+        y_val=y_val,   
         epochs=epochs,
         batch_size=batch_size,
         patience=patience,
@@ -1049,6 +1221,8 @@ def main_train_model(
     # Prepare training data
     X_train = train_kwargs['X_train']
     y_train = train_kwargs['y_train']
+    X_val   = train_kwargs.get('X_val')
+    y_val   = train_kwargs.get('y_val')
 
     SEQ2SEQ_ARCHS = ["Seq2Context", "Seq2PIN", "Seq2Trend"]
     if y_train.ndim > 1 and architecture_name in SEQ2SEQ_ARCHS:
@@ -1085,6 +1259,8 @@ def main_train_model(
         model=model,
         X_train=X_train,
         y_train=y_train,
+        X_val=X_val,          
+        y_val=y_val,
         epochs=epochs,
         batch_size=batch_size,
         patience=patience,

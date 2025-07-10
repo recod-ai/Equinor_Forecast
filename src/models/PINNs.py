@@ -853,26 +853,30 @@ class BiasScaleContextFuser(BaseContextFuser):
             kernel_initializer=self.kernel_initializer,
             name=f"{self.name}_mlp_dense1"
         )
+        # self.norm_context = tf.keras.layers.LayerNormalization(name=f"{self.name}_context_norm")
         self.residual_mlp_dropout = layers.Dropout(dropout_rate, name=f"{self.name}_mlp_drop")
         self.residual_mlp_dense2 = layers.Dense(
             1,
             activation=None,
             kernel_initializer=self.kernel_initializer,
-            name=f"{self.name}_mlp_dense2"
+            name=f"{self.name}_mlp_dense2",
+            kernel_regularizer=tf.keras.regularizers.l2(1e-4)
         )
         self.scale_dense = layers.Dense(
             1,
             activation=scale_activation,
             kernel_initializer=self.kernel_initializer,
             bias_initializer=initializers.Constant(1.0),
-            name=f"{self.name}_scale_dense"
+            name=f"{self.name}_scale_dense",
+            # kernel_regularizer=tf.keras.regularizers.l2(1e-4)
         )
         self.bias_dense = layers.Dense(
             1,
             activation=bias_activation,
             kernel_initializer=self.kernel_initializer,
             bias_initializer=self.bias_const,
-            name=f"{self.name}_bias_dense"
+            name=f"{self.name}_bias_dense",
+            # kernel_regularizer=tf.keras.regularizers.l2(1e-4)
         )
 
     def call(self, context_vector, per_step_inputs, training=False):
@@ -884,6 +888,7 @@ class BiasScaleContextFuser(BaseContextFuser):
             tf.expand_dims(times, -1),
             tf.tile(tf.expand_dims(pi_last, 1), [1, self.forecast_horizon, 1])
         ], -1)
+        # context_vector = self.norm_context(context_vector)
         hidden = self.residual_mlp_dense1(features)
         hidden = self.residual_mlp_dropout(hidden, training=training)
         prelim = self.residual_mlp_dense2(hidden)
@@ -906,6 +911,8 @@ class BiasScaleContextFuser(BaseContextFuser):
         return config
 
 
+
+
 class ProbabilisticBiasScaleFuser(BaseContextFuser):
     """
     Fuser probabilístico que ajusta o baseline físico via α 
@@ -914,8 +921,8 @@ class ProbabilisticBiasScaleFuser(BaseContextFuser):
     def __init__(
         self,
         forecast_horizon: int,
-        residual_hidden_units: int = 32,
-        dropout_rate: float = 0.01,
+        residual_hidden_units: int = 64,
+        dropout_rate: float = 0.1,
         initializer: Union[str, initializers.Initializer] = "he_normal",
         name: str = "prob_bias_context_fuser",
         **kwargs

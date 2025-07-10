@@ -679,8 +679,16 @@ def analyze_contributions(Qs, res, alpha, scaler_target):
 
 
 
+import time
+import random
+def reseed_everything():
+    seed = int(time.time() * 1e6) % (2**31 - 1)
+    tf.keras.backend.clear_session()
+    tf.random.set_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
 
-# (insira logo depois dos imports internos)
+
 def _chunk_worker(
     conn,
     build_fn,
@@ -695,25 +703,35 @@ def _chunk_worker(
     patience,
     max_retries,
     skip_on_failure,
-    agg_sigma="approx"  # "approx" → σ_ens² = mean(σ_i²) + var(μ_i)
+    agg_sigma="approx",  # "approx" → σ_ens² = mean(σ_i²) + var(μ_i)
 ):
-    """Treina `chunk_size` modelos, faz ensemble (snapshots) e devolve saídas
-    no formato usado historicamente pelo pipeline:
+    """
+    Treina `chunk_size` modelos, faz ensemble (snapshots quando disponíveis) e devolve
+    saídas no formato usado historicamente pelo pipeline.
 
         pred_test, pred_val, q_phys, res, mu_raw, sigma, alpha, successful_models
-
-    Campos opcionais são incluídos apenas se existirem na saída do modelo.
-
-    Se `sigma` estiver presente o ensemble calcula automaticamente a soma de
-    incerteza aleatória e epistêmica.
     """
 
-    import numpy as np
-    import tensorflow as tf
-    import gc, logging
+    # ------------------------------------------------------------------
+    # 0.  Imports locais
+    # ------------------------------------------------------------------
+    # import numpy as np
+    # import tensorflow as tf
+    # import gc, logging
+    # import os, random
+
+    # seed = 42
+    # os.environ['PYTHONHASHSEED'] = str(seed)
+    # os.environ['TF_DETERMINISTIC_OPS'] = '1'
+    # random.seed(seed)
+    # np.random.seed(seed)
+    # tf.random.set_seed(seed)
+    # tf.config.experimental.enable_op_determinism()
+
+    # with_snapshots = True
 
     # ------------------------------------------------------------------
-    # 1.  Mapeamento tamanho → chaves
+    # 1.  Mapas utilitários
     # ------------------------------------------------------------------
     _OUT_SCHEMAS = {
         5: ("pred", "q_phys", "res", "sigma", "alpha"),
@@ -722,6 +740,10 @@ def _chunk_worker(
         1: ("pred",),
     }
 
+    def _to_np(x):
+        """Converte tf.Tensor → np.ndarray, senão devolve como np.asarray."""
+        return x.numpy() if isinstance(x, tf.Tensor) else np.asarray(x)
+
     def _tuple_to_dict(out):
         if not isinstance(out, tuple):
             out = (out,)
@@ -729,15 +751,17 @@ def _chunk_worker(
             schema = _OUT_SCHEMAS[len(out)]
         except KeyError:
             raise ValueError(f"Saída com {len(out)} branches não suportada")
-        return {k: out[i] for i, k in enumerate(schema)}
+        # Garantimos NumPy em todas as branches
+        return {k: _to_np(out[i]) for i, k in enumerate(schema)}
 
     def _online_mean(running, new, n):
+        """Atualiza média incrementalmente."""
         return new.copy() if running is None else running + (new - running) / n
 
     # ------------------------------------------------------------------
-    # 2.  Ensemble via snapshots
+    # 2.  Predição com/sem snapshots
     # ------------------------------------------------------------------
-    def predict_with_snapshots(model, X):
+    def _predict_with_snapshots(model, X):
         snaps = getattr(model, "_snapshot_weights", None)
         if not snaps:
             raise ValueError("Lista de snapshots vazia!")
@@ -752,20 +776,33 @@ def _chunk_worker(
         keys = outs[0].keys()
         stk = {k: np.stack([d[k] for d in outs], axis=0) for k in keys}
 
-        # média de todos exceto σ
         agg = {k: stk[k].mean(axis=0) for k in keys if k != "sigma"}
 
         if "sigma" in keys:
             if agg_sigma == "approx":  # σ_ens² = E[σ²] + Var(μ)
-                mu_stack = stk["pred"]  # usamos curva final como μ_i
+                mu_stack = stk["pred"]
                 sigma_stack = stk["sigma"]
-                mu_mean  = mu_stack.mean(axis=0)
-                var_mu   = mu_stack.var(axis=0)
-                mean_sig2 = (sigma_stack ** 2).mean(axis=0)
-                agg["sigma"] = np.sqrt(mean_sig2 + var_mu)
+                agg["sigma"] = np.sqrt(
+                    (sigma_stack ** 2).mean(axis=0) + mu_stack.var(axis=0)
+                )
             else:
                 agg["sigma"] = stk["sigma"].mean(axis=0)
         return agg
+
+    def _predict(model, X, want_snapshots):
+        use_snapshots = (
+            want_snapshots
+            and getattr(model, "_snapshot_weights", None)
+            and len(model._snapshot_weights) > 0
+        )
+        if use_snapshots:
+            return _predict_with_snapshots(model, X), True
+        else:
+            if want_snapshots:
+                logging.warning(
+                    "Snapshots solicitados mas não encontrados; usando pesos finais."
+                )
+            return _tuple_to_dict(model(X, training=False)), False
 
     # ------------------------------------------------------------------
     # 3.  Dados estáticos
@@ -773,7 +810,6 @@ def _chunk_worker(
     X_test = data_inputs["X_test"]
     X_val  = data_inputs["X_val"]
 
-    # Agregadores online
     running_test = {}
     running_val  = {}
     running_alpha_sum = 0.0
@@ -788,8 +824,12 @@ def _chunk_worker(
     try:
         for _ in range(chunk_size):
             outs_test = outs_val = None
+            used_snaps = False
 
-            # 4.1 build + treino (com retries)
+            # 🔁 Força um novo estado aleatório para cada modelo
+            # reseed_everything()
+
+            # build + treino (com retries)
             for attempt in range(max_retries + 1):
                 try:
                     model, _ = build_fn(
@@ -797,22 +837,24 @@ def _chunk_worker(
                         epochs, batch_size, patience
                     )
 
-                    if with_snapshots:
-                        outs_test = predict_with_snapshots(model, X_test)
-                        outs_val  = predict_with_snapshots(model, X_val)
+                    outs_test, used_snaps = _predict(model, X_test, with_snapshots)
+                    outs_val,  _          = _predict(model, X_val,  with_snapshots)
+
+                    if used_snaps:
                         try:
-                            t_pct, p_pct = analyze_trend_contribution(model, verbose=False)
+                            t_pct, p_pct = analyze_trend_contribution(
+                                model, verbose=False
+                            )
                             trend_accum   += t_pct
                             physics_accum += p_pct
                             contrib_count += 1
                         except Exception:
                             pass
-                    else:
-                        outs_test = _tuple_to_dict(model(X_test, training=False))
-                        outs_val  = _tuple_to_dict(model(X_val,  training=False))
-                    break  # sucesso — sai do retry
+                    break
                 except Exception as ex:
-                    logging.warning("Attempt %d failed: %s", attempt, ex, exc_info=True)
+                    logging.warning(
+                        "Attempt %d failed: %s", attempt, ex, exc_info=True
+                    )
                     tf.keras.backend.clear_session(); gc.collect()
                     if attempt == max_retries:
                         if skip_on_failure:
@@ -825,11 +867,9 @@ def _chunk_worker(
 
             successful += 1
 
-            # 4.2 Agregação online
+            # Agregação online
             def _accumulate(dic_out, dest, suffix):
-                """dest é dict running_test ou running_val"""
                 for k, arr in dic_out.items():
-                    # q_phys só faz sentido para test
                     if k == "q_phys" and suffix != "val":
                         continue
                     key = k if k == "q_phys" else f"{k}_{suffix}"
@@ -845,24 +885,23 @@ def _chunk_worker(
             tf.keras.backend.clear_session(); gc.collect()
 
         # ------------------------------------------------------------------
+        # 5.  Estatísticas extras e saída
+        # ------------------------------------------------------------------
         if successful == 0:
             raise RuntimeError("No models succeeded in this chunk")
 
-        if with_snapshots and contrib_count > 0:
+        if contrib_count > 0:
             logging.info(
                 "Trend Contribution: %.2f%% | Physics Contribution: %.2f%%",
                 trend_accum / contrib_count,
                 physics_accum / contrib_count,
             )
 
-        # ------------------------------------------------------------------
-        # 5.  Saída no formato compatível
-        # ------------------------------------------------------------------
         chunk_output = {
             "successful_models": successful,
-            "alpha": (running_alpha_sum / models_with_alpha) if models_with_alpha else None,
+            "alpha": (running_alpha_sum / models_with_alpha)
+                     if models_with_alpha else None,
         }
-        # junta dicionários "test" e "val" mantendo nomes convencionais
         chunk_output.update(running_test)
         chunk_output.update(running_val)
         conn.send(chunk_output)
@@ -873,7 +912,6 @@ def _chunk_worker(
     finally:
         conn.close()
         tf.keras.backend.clear_session(); gc.collect()
-
 
 
 
@@ -891,6 +929,7 @@ def train_predict_chunk(
     max_retries: int,
     skip_on_failure: bool
 ) -> dict:
+
     logging.info(f"→ Launching chunk of {chunk_size} models")
     parent_conn, child_conn = Pipe()
     p = Process(
@@ -908,7 +947,7 @@ def train_predict_chunk(
             batch_size,
             patience,
             max_retries,
-            skip_on_failure
+            skip_on_failure,
         )
     )
     p.start()

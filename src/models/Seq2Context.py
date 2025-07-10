@@ -69,7 +69,7 @@ def create_context_extractor(config: dict):
         defaults = {
             'tcn_filters': 64, 'tcn_kernel_size': 3, 'tcn_dilations': (1, 2, 4),
             'tcn_stacks': 1, 'tcn_activation': 'relu', 'tcn_normalization': 'layer',
-            'dropout_rate': 0.01
+            'dropout_rate': 0
         }
         params = {k: cfg.get(k, v) for k, v in defaults.items()}
         return TCNContextExtractor(name=name, **params)
@@ -78,7 +78,7 @@ def create_context_extractor(config: dict):
         defaults = {
             'cnn_filters': 64, 'cnn_kernel_size': 3, 'cnn_layers': 3,
             'cnn_activation': 'relu', 'cnn_pooling': 'global_avg',
-            'dropout_rate': 0.1
+            'dropout_rate': 0
         }
         params = {k: cfg.get(k, v) for k, v in defaults.items()}
         return CNNContextExtractor(name=name, **params)
@@ -86,7 +86,7 @@ def create_context_extractor(config: dict):
     if extractor_type == 'rnn':
         defaults = {
             'rnn_units': 64, 'rnn_layers': 3, 'rnn_type': 'lstm',
-            'bidirectional': False, 'dropout_rate': 0.1
+            'bidirectional': False, 'dropout_rate': 0
         }
         params = {k: cfg.get(k, v) for k, v in defaults.items()}
         return RNNContextExtractor(name=name, **params)
@@ -219,6 +219,9 @@ class PhysicsInformedForecaster(layers.Layer):
         self.p_idx = p_idx
         self.t_idx = t_idx
         self.pwf_idx = pwf_idx
+
+        self.residual_magnitude_weight = 0.1
+        self.residual_smoothness_weight = 0.01
         
         tf.print('strategy_config', self.strategy_cfg)
         tf.print('self.fuser_config', self.fuser_cfg)
@@ -331,9 +334,6 @@ class PhysicsInformedForecaster(layers.Layer):
         }
         self.strategy = physics_strategy_factory(strat, params)
 
-        self.smoother = ResidualSmoother(ksize=15, sigma=1.2)
-
-
     def _project_baseline(self, x):
         """Compute scaled baseline and vars for fusion."""
         batch = tf.shape(x)[0]
@@ -354,6 +354,24 @@ class PhysicsInformedForecaster(layers.Layer):
         Q_base = self.strategy.compute_Q_phys(PI, P0, steps)
         Q_scaled = (Q_base - self.y_mean) / self.y_std
         return Q_scaled, Q_base, times, PI, P0, t0
+
+    def _add_residual_regularization(self, residual_tensor):
+        """Calculates and adds regularization losses based on the residual tensor."""
+        # A loss só é adicionada se o peso for maior que zero, evitando cálculos desnecessários.
+        if self.residual_magnitude_weight > 0:
+            # Penaliza a magnitude L2 do resíduo para incentivá-lo a ser pequeno.
+            magnitude_loss = tf.reduce_mean(tf.square(residual_tensor))
+            self.add_loss(self.residual_magnitude_weight * magnitude_loss)
+            self.add_metric(magnitude_loss, name='residual_magnitude_loss') # Opcional: para monitorar
+
+        if self.residual_smoothness_weight > 0:
+            # Penaliza a diferença entre passos de tempo adjacentes para forçar a suavidade.
+            # Esta é a regularização mais importante para estabilidade.
+            smoothness_loss = tf.reduce_mean(tf.square(
+                residual_tensor[:, 1:] - residual_tensor[:, :-1]
+            ))
+            self.add_loss(self.residual_smoothness_weight * smoothness_loss)
+            self.add_metric(smoothness_loss, name='residual_smoothness_loss') # Opcional: para monitorar
 
     def call(self, inputs, training=False):
         """Forward pass returning forecast and optional branches."""
@@ -406,20 +424,15 @@ class PhysicsInformedForecaster(layers.Layer):
 
         else:
             res = self.fuser(ctx, per_step, training=training)
-            # res = self.smoother(res)  
-            alpha_vec = 0.7 * tf.sigmoid(self.alpha_raw) + 0.3   # (H,)
-            alpha_vec = tf.reshape(alpha_vec, (1, self.horizon))  # broadcast (1,H)
+            self._add_residual_regularization(res)
+            alpha_vec = 0.8 * tf.sigmoid(self.alpha_raw) + 0.2   # (H,)
+            # alpha_vec = tf.reshape(alpha_vec, (1, self.horizon))  # broadcast (1,H)
             out = alpha_vec * Qs + (1.0 - alpha_vec) * res
             
-            if training:
-                if tf.equal(self.iter % 8000, 0) and self.iter > 0:
-                    self.diagnostic(PI, P0, Qb, t0)
-                self.iter.assign_add(1)
-    
-            return (out, Qs, res, alpha_vec) 
+            return (out, Qs, res) 
             
         if training:
-            if tf.equal(self.iter % 40000, 0) and self.iter > 0:
+            if tf.equal(self.iter % 8000, 0) and self.iter > 0:
                 self.diagnostic(PI, P0, Qb, t0)
             self.iter.assign_add(1)
 
@@ -451,7 +464,9 @@ class PhysicsInformedForecaster(layers.Layer):
             'pi_idx': self.pi_idx,
             'p_idx': self.p_idx,
             't_idx': self.t_idx,
-            'pwf_idx': self.pwf_idx
+            'pwf_idx': self.pwf_idx,
+            'residual_magnitude_weight': self.residual_magnitude_weight,
+            'residual_smoothness_weight': self.residual_smoothness_weight
         })
         return cfg
 

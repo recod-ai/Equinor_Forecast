@@ -119,7 +119,7 @@ DATA_SOURCES = [
     {
         "name":  "VOLVE",
         "wells": ["15/9-F-14", "15/9-F-12", "15/9-F-11", "15/9-F-15 D"],
-        "wells": ["15/9-F-14"],
+        "wells": ["15/9-F-12"],
         "load_params": {
             "data_path":  DATA_DIR / "volve" / "Volve_Equinor.csv",
             "serie_name": "BORE_OIL_VOL",
