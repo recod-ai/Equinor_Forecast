@@ -6,13 +6,13 @@ DEFAULT_EXP_PARAMS:
   - 0.75
   architecture_name: Seq2Context
   band: null
-  batch_size: 8
-  epochs: 250
+  batch_size: 16
+  epochs: 100
   evaluate_by_slice: true
   feature_kind: Normal
   horizon: 30
-  lag_window: 30
-  patience: 100
+  lag_window: 3
+  patience: 150
   plot: true
   scenario: P50
   show_components: false
@@ -20,5 +20,5 @@ DEFAULT_EXP_PARAMS:
   - 1.0
   test_size: 0.6
   use_known_good: false
-datasets_to_run: UNISIM_IV
-num_ensemble_models: 1
+datasets_to_run: VOLVE
+num_ensemble_models: 5

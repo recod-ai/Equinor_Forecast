@@ -11,9 +11,9 @@ DEFAULT_EXP_PARAMS:
   evaluate_by_slice: true
   feature_kind: Normal
   horizon: 30
-  lag_window: 30
-  patience: 50
-  plot: false
+  lag_window: 15
+  patience: 150
+  plot: true
   scenario: P50
   show_components: false
   slice_ratios: !!python/tuple
@@ -21,4 +21,4 @@ DEFAULT_EXP_PARAMS:
   test_size: 0.6
   use_known_good: false
 datasets_to_run: VOLVE
-num_ensemble_models: 5
+num_ensemble_models: 1

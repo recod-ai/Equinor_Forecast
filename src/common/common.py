@@ -243,6 +243,261 @@ def augment_with_synthetic_samples(
     return X_train_aug, y_train_aug
 
 
+
+import numpy as np
+import pickle
+from typing import Tuple
+
+def create_internal_validation_set_from_disk(
+    X_aug: np.ndarray,
+    y_aug: np.ndarray,
+    metadata_path: str,
+    val_frac: float = 0.1
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Cria um conjunto de treino e validação interna a partir de dados aumentados
+    e metadados salvos em disco, garantindo a separação cronológica dentro de cada bloco.
+
+    Args:
+        X_aug: O array completo de features aumentado.
+        y_aug: O array completo de rótulos aumentado.
+        metadata_path: Caminho para o arquivo .pkl contendo os metadados dos blocos.
+        val_frac: Fração de cada bloco a ser usada para validação (ex: 0.1 para 10%).
+
+    Returns:
+        Uma tupla contendo (X_train_fit, y_train_fit, X_val_internal, y_val_internal).
+    """
+    try:
+        with open(metadata_path, 'rb') as f:
+            metadata = pickle.load(f)
+        end_indices = metadata["end_indices"]
+    except (FileNotFoundError, IOError) as e:
+        raise RuntimeError(f"Não foi possível carregar o arquivo de metadados de '{metadata_path}'. "
+                         f"Certifique-se de que a função de aumento foi executada com a flag "
+                         f"'save_metadata_path'. Erro original: {e}")
+
+    # Listas para coletar as partes de cada novo conjunto
+    X_train_fit_parts = []
+    y_train_fit_parts = []
+    X_val_internal_parts = []
+    y_val_internal_parts = []
+
+    start_index = 0
+    for end_index in end_indices:
+        # Pega o bloco de dados atual (original ou sintético)
+        X_block = X_aug[start_index:end_index]
+        y_block = y_aug[start_index:end_index]
+
+        # Calcula o ponto de divisão dentro do bloco atual
+        n_block_samples = len(y_block)
+        if n_block_samples == 0:
+            continue
+
+        split_point = int(n_block_samples * (1 - val_frac))
+
+        # Adiciona os primeiros (1 - val_frac)% ao conjunto de treino
+        X_train_fit_parts.append(X_block[:split_point])
+        y_train_fit_parts.append(y_block[:split_point])
+        
+        # Adiciona os últimos val_frac% ao conjunto de validação
+        X_val_internal_parts.append(X_block[split_point:])
+        y_val_internal_parts.append(y_block[split_point:])
+        
+        # Atualiza o índice de início para o próximo bloco
+        start_index = end_index
+
+    # Concatena todas as partes de treino e validação
+    # Lida com o caso em que uma das listas pode estar vazia (se val_frac=0 ou 1)
+    X_train_fit = np.concatenate(X_train_fit_parts, axis=0) if X_train_fit_parts else np.array([])
+    y_train_fit = np.concatenate(y_train_fit_parts, axis=0) if y_train_fit_parts else np.array([])
+    X_val_internal = np.concatenate(X_val_internal_parts, axis=0) if X_val_internal_parts else np.array([])
+    y_val_internal = np.concatenate(y_val_internal_parts, axis=0) if y_val_internal_parts else np.array([])
+
+    print(f"Divisão interna criada: "
+          f"Treino_fit: {X_train_fit.shape[0]} amostras, "
+          f"Val_internal: {X_val_internal.shape[0]} amostras.")
+
+    return X_train_fit, y_train_fit, X_val_internal, y_val_internal
+
+import numpy as np
+import pandas as pd
+from typing import Optional, Dict, List, Any
+
+
+def inspect_array_integrity(
+    arr: np.ndarray, name: str
+) -> Dict[str, Any]:
+    """
+    Inspects a numpy array for NaNs and Infs, returning counts and percentages.
+
+    Args:
+        arr: numpy array to inspect.
+        name: label for the array.
+
+    Returns:
+        A dict with keys: name, total_elements, nan_count, nan_pct, posinf_count,
+        neginf_count, inf_count, inf_pct.
+    """
+    total = arr.size
+    nan_count = int(np.isnan(arr).sum())
+    posinf_count = int(np.isposinf(arr).sum())
+    neginf_count = int(np.isneginf(arr).sum())
+    inf_count = posinf_count + neginf_count
+    return {
+        'dataset': name,
+        'total_elements': total,
+        'nan_count': nan_count,
+        'nan_pct': nan_count / total * 100,
+        'posinf_count': posinf_count,
+        'neginf_count': neginf_count,
+        'inf_count': inf_count,
+        'inf_pct': inf_count / total * 100
+    }
+
+
+def create_integrity_report(
+    X_before: np.ndarray,
+    y_before: np.ndarray,
+    X_after: np.ndarray,
+    y_after: np.ndarray,
+    metadata: Optional[Dict[str, List[int]]] = None,
+    display: bool = True
+) -> pd.DataFrame:
+    """
+    Gera um relatório de integridade dos dados antes e depois da data augmentation,
+    identificando NaNs e Infs, e opcionalmente detalhando por blocos com metadados.
+
+    Args:
+        X_before: dados originais (X)
+        y_before: rótulos originais (y)
+        X_after: dados aumentados (X)
+        y_after: rótulos aumentados (y)
+        metadata: dicionário com 'end_indices' listando os limites cumulativos de cada bloco
+        display: se True, imprime o DataFrame estilizado no notebook.
+
+    Returns:
+        DataFrame com relatório agregado (e por bloco, se metadata informado).
+    """
+    reports = []
+    # global before/after
+    reports.append(inspect_array_integrity(X_before, 'X_before'))
+    reports.append(inspect_array_integrity(y_before, 'y_before'))
+    reports.append(inspect_array_integrity(X_after, 'X_after'))
+    reports.append(inspect_array_integrity(y_after, 'y_after'))
+
+    df = pd.DataFrame(reports)
+
+    # se tiver metadados, detalhar por bloco
+    if metadata and 'end_indices' in metadata:
+        ends = metadata['end_indices']
+        starts = [0] + ends[:-1]
+        for i, (s, e) in enumerate(zip(starts, ends)):
+            X_block = X_after[s:e]
+            y_block = y_after[s:e]
+            reports_block = inspect_array_integrity(X_block, f'X_block_{i}')
+            reports_block.update({'block': i})
+            reports.append(reports_block)
+            reports_block = inspect_array_integrity(y_block, f'y_block_{i}')
+            reports_block.update({'block': i})
+            reports.append(reports_block)
+        df = pd.DataFrame(reports)
+    
+    # organizar colunas
+    cols = ['dataset', 'block', 'total_elements', 'nan_count', 'nan_pct',
+            'posinf_count', 'neginf_count', 'inf_count', 'inf_pct']
+    for c in cols:
+        if c not in df.columns:
+            df[c] = np.nan
+    df = df[cols]
+
+    if display:
+        try:
+            from IPython.display import display as _disp
+            _disp(df.style.format({
+                'nan_pct': '{:.2f}%',
+                'inf_pct': '{:.2f}%'
+            }))
+        except ImportError:
+            print(df)
+    return df
+
+
+
+def augment_with_synthetic_samples(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    scales: List[float] = [1.5, 2, 3, 5, 7, 9, 11, 13, 15, 17, 19],
+    sample_frac_per_scale: float = 0.95,
+    random_state: int = 42,
+    save_metadata_path: Optional[str] = "Meta_validation"  # Parâmetro opcional para salvar metadados
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Aumenta os dados com versões escaladas, preservando a ordem cronológica,
+    e opcionalmente salva os metadados dos blocos em disco.
+
+    Args:
+        X_train: Dados de treino originais (ordenados cronologicamente).
+        y_train: Rótulos de treino originais.
+        scales: Lista de fatores de escala para gerar dados sintéticos.
+        sample_frac_per_scale: Fração de amostras a serem selecionadas de cada bloco.
+        random_state: Semente para reprodutibilidade.
+        save_metadata_path: Se fornecido, salva os índices de fim de bloco neste caminho.
+
+    Returns:
+        Um novo conjunto de treino e rótulos aumentados.
+    """
+    
+    rng = np.random.RandomState(random_state)
+
+    # Coleta as partes dos dados aumentados
+    X_augmented_list = [X_train]
+    y_augmented_list = [y_train]
+
+    num_original_samples = X_train.shape[0]
+
+    for scale in scales:
+        # Gera o bloco sintético completo
+        X_scaled = X_train / scale
+        y_scaled = y_train / scale
+
+        # Determina quantos índices selecionar
+        num_to_sample = int(num_original_samples * sample_frac_per_scale)
+        if num_to_sample == 0:
+            continue # Pula se a fração for muito pequena e resultar em 0 amostras
+
+        # 1. Seleciona `k` índices aleatórios do bloco sintético.
+        chosen_indices = rng.choice(num_original_samples, size=num_to_sample, replace=False)
+
+        # 2. ORDENA os índices selecionados para preservar a ordem cronológica.
+        sorted_indices = np.sort(chosen_indices)
+
+        # 3. Usa os índices ordenados para criar a subamostra.
+        X_sub_ordered = X_scaled[sorted_indices]
+        y_sub_ordered = y_scaled[sorted_indices]
+
+        X_augmented_list.append(X_sub_ordered)
+        y_augmented_list.append(y_sub_ordered)
+        
+    # --- Lógica de Metadados ---
+    # É executada mesmo se não for salvar, pois é leve.
+    block_sizes = [len(part) for part in X_augmented_list]
+    end_indices = np.cumsum(block_sizes).tolist()
+    
+    # Salva os metadados se um caminho for fornecido
+    if save_metadata_path:
+        metadata = {"end_indices": end_indices}
+        try:
+            with open(save_metadata_path, 'wb') as f:
+                pickle.dump(metadata, f)
+        except IOError as e:
+            print(f"Erro ao salvar metadados em {save_metadata_path}: {e}")
+
+    # --- Concatenação Final ---
+    X_final = np.concatenate(X_augmented_list, axis=0)
+    y_final = np.concatenate(y_augmented_list, axis=0)
+
+    return X_final, y_final
+
 def create_synthetic_samples(X_train, y_train, scales=[2, 3, 5]):
     """
     Generate synthetic samples by scaling down the amplitude of X_train and y_train.

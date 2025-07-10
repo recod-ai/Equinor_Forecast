@@ -45,17 +45,17 @@ class DefaultExperimentParams:
     architecture_name: str     = ARCH
     feature_kind: str          = "Normal"
     use_known_good: bool       = False
-    lag_window: int            = 30
+    lag_window: int            = 3
     horizon: int               = 30
     epochs: int                = 100
     batch_size: int            = 16
-    patience: int              = 50
+    patience: int              = 150
     test_size: float           = 0.6
     aggregation_method: str    = "median"
     evaluate_by_slice: bool    = True
     slice_ratios: List[float]  = (1.0,)
     aggregation_quantiles: List[float] = (0.25, 0.5, 0.75)
-    plot: bool                 = False
+    plot: bool                 = True
     # New parameters:
     scenario: str              = "P50"              # Options: P50, P90, P10, BAND
     band: Optional[List[float]] = None              # e.g. [0.1, 0.9] if scenario == "BAND"
@@ -69,7 +69,7 @@ DEFAULT_EXP_PARAMS: Dict[str, Any] = DefaultExperimentParams().__dict__
 # III. LOG LEVEL AND PARALLELISM
 # -------------------------------------------------------------------
 LOG_LEVEL: int    = 1    # 0 → progress bar only; 1 → adds logging.info; 2 → all detailed outputs
-MAX_WORKERS: int  = 8    # Maximum number of workers for parallelism
+MAX_WORKERS: int  = 10    # Maximum number of workers for parallelism
 
 
 # -------------------------------------------------------------------
@@ -77,10 +77,10 @@ MAX_WORKERS: int  = 8    # Maximum number of workers for parallelism
 # -------------------------------------------------------------------
 STRATEGY_OPTIONS: List[Dict[str, str]] = [
     {"strategy_name": "pressure_ensemble"},
-    # {"strategy_name": "arps"},
-    # {"strategy_name": "combined_exp_arps"},
-    # {"strategy_name": "exponential"},
-    # {"strategy_name": "static"},
+    {"strategy_name": "arps"},
+    {"strategy_name": "combined_exp_arps"},
+    {"strategy_name": "exponential"},
+    {"strategy_name": "static"},
 ]
 
 # Conditionally override extractor and fuser options
@@ -89,14 +89,14 @@ if ARCH in {"Seq2PIN", "Seq2Trend"}:
     FUSER_OPTIONS    = [{"type": "None"}]
 else:
     EXTRACTOR_OPTIONS: List[Dict[str, str]] = [
-        {"type": "tcn"},
-        {"type": "rnn"},
-        {"type": "cnn"},
+        # {"type": "tcn"},
+        # {"type": "rnn"},
+        # {"type": "cnn"},
         {"type": "aggregate"},
-        {"type": "identity"},
+        # {"type": "identity"},
     ]
     FUSER_OPTIONS: List[Dict[str, str]] = [
-        {"type": "film"},
+        # {"type": "film"},
         {"type": "bias_scale"},
         # {"type": "prob_bias"},
         # {"type": "None"},

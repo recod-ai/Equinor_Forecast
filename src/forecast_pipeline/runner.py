@@ -62,6 +62,8 @@ from .metrics import collate_metrics, clean_and_structure_results
 
 
 # ─── runner.py ──────────────────────────────────────────────────────────────
+
+
 from contextlib import nullcontext  
 
 
@@ -111,6 +113,8 @@ def execute_jobs(jobs: List[JobTuple]) -> List[Dict[str, Any]]:
     # Small helpers
     # ------------------------------------------------------------------ #
     def _worker_init(level: int):
+    
+        logging.getLogger().setLevel(level)
         """Set log level once per process (runs *inside* each worker)."""
         logging.getLogger().setLevel(level)
 
