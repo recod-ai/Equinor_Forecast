@@ -45,7 +45,7 @@ class DefaultExperimentParams:
     architecture_name: str     = ARCH
     feature_kind: str          = "Normal"
     use_known_good: bool       = False
-    lag_window: int            = 3
+    lag_window: int            = 30
     horizon: int               = 30
     epochs: int                = 100
     batch_size: int            = 16
