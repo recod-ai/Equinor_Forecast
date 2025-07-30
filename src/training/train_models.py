@@ -706,8 +706,6 @@ def select_best_snapshots_from_callback(
     
     return snapshot_weights, snapshot_epochs, snapshot_val_losses
 
-
-
 # =============================================================================
 # Função moderna de Treino para assegurar a convergência
 # =============================================================================
@@ -728,7 +726,7 @@ def train_modern(
     validation_split: float = 0.1,
     cycles: int = 7,
     use_mixed_precision: bool = True,
-    validation_mode: str = "hybrid"
+    validation_mode: str = "classic" #hybrid
 ) -> Tuple[tf.keras.Model, dict, tuple]:
     """
     Train the model with a modern signature and flexible validation set creation.
@@ -770,6 +768,7 @@ def train_modern(
             patience=patience, 
             restore_best_weights=True
         ),
+        # OptunaPruningCallback(None, monitor='val_loss'),
         tf.keras.callbacks.LearningRateScheduler(lr_schedule, verbose=0),
     ]
 
@@ -797,8 +796,8 @@ def train_modern(
     )
 
     model._snapshot_weights = snapshot_weights
-    history_evaluation(history)
-    evaluate_snapshots_and_ensemble(model, X_val_final, y_val_final, snapshot_weights, snapshot_epochs, history.history)
+    # history_evaluation(history)
+    # evaluate_snapshots_and_ensemble(model, X_val_final, y_val_final, snapshot_weights, snapshot_epochs, history.history)
     return model, history.history
 
 
@@ -832,8 +831,8 @@ def _train_individual_block(
     )
     model, _ = train_modern(
         model=model,
-        X_train=X_train,
-        y_train=y_train,
+        X=X_train,
+        y=y_train,
         X_val=X_val, 
         y_val=y_val,
         epochs=epochs,
@@ -887,6 +886,7 @@ def train_hybrid_staged(
       4. Fine-tune complete model with all layers trainable.
     """
     # Stage 1: Trend block
+    logging.info(">>> STAGE 1: Training TREND Block")
     trend_model = _train_individual_block(
         X_train=X_train,
         y_train=y_train,
@@ -906,6 +906,7 @@ def train_hybrid_staged(
     )
 
     # Stage 2: Physics block
+    logging.info(">>> STAGE 2: Training PINN Block")
     physics_model = _train_individual_block(
         X_train=X_train,
         y_train=y_train,
@@ -915,7 +916,7 @@ def train_hybrid_staged(
         freeze_trend=True,
         freeze_physics=False,
         fusion_type='pin',
-        epochs=20,
+        epochs=epochs,
         batch_size=batch_size,
         patience=patience,
         optimizer_type=optimizer_type,
@@ -925,6 +926,7 @@ def train_hybrid_staged(
     )
 
     # Stage 3: Fusion layer training
+    logging.info(">>> STAGE 3: Training FUSION Block")
     fusion_args = {**model_args, 'freeze_trend': True, 'freeze_physics': True}
     fusion_model = _assemble_fusion_model(fusion_args, trend_model, physics_model)
     fusion_model, _ = train_modern(
@@ -943,6 +945,7 @@ def train_hybrid_staged(
     )
 
     # Stage 4: Fine-tuning all layers
+    logging.info(">>> STAGE 4: Fine-tuning all layers")
     fusion_model.get_layer('trend_block').trainable = True
     fusion_model.get_layer('physics_block').trainable = True
     fusion_model, history = train_modern(
@@ -971,6 +974,7 @@ def train_hybrid_three_stages(
     batch_size: int,
     patience: int,
     optimizer_cfg: dict,
+    initial_lr:float,
     val_split: float = 0.1,
     cycles: int = 5,
     use_mixed_precision: bool = True
@@ -993,7 +997,6 @@ def train_hybrid_three_stages(
 
     # extrai parâmetros do optimizador para o train_modern
     opt_cls     = optimizer_cfg
-    lr0         = 1e-4
     wd0         = 1e-4
 
     histories = {}
@@ -1023,7 +1026,7 @@ def train_hybrid_three_stages(
         batch_size=batch_size,
         patience=patience,
         optimizer_type=opt_cls,
-        initial_lr=lr0,
+        initial_lr=initial_lr,
         weight_decay=wd0,
         checkpoint_path=ckpt1,
         validation_split=val_split,
@@ -1055,7 +1058,7 @@ def train_hybrid_three_stages(
         batch_size=batch_size,
         patience=patience,
         optimizer_type=opt_cls,
-        initial_lr=lr0,
+        initial_lr=initial_lr,
         weight_decay=wd0,
         checkpoint_path=ckpt2,
         validation_split=val_split,
@@ -1087,7 +1090,7 @@ def train_hybrid_three_stages(
         batch_size=batch_size,
         patience=patience,
         optimizer_type=opt_cls,
-        initial_lr=lr0,
+        initial_lr=initial_lr,
         weight_decay=wd0,
         checkpoint_path=ckpt3,
         validation_split=val_split,
@@ -1116,20 +1119,24 @@ def train_model(
     batch_size: int = 32,
     patience: int = 300,
     optimizer_type: str = 'adam',
-    initial_lr: float = 1e-2,
+    initial_lr: float = 1e-3,
     weight_decay: float = 1e-4,
     first_decay_steps: int = 100,
     checkpoint_path: str = 'best_model.keras',
     use_gradient_tape: bool = False,
     training_mode: str = "traditional",
-    architecture_name: Optional[str] = None
+    architecture_name: Optional[str] = None,
+    strategy_config: Optional[Dict] = None,
+    extractor_config: Optional[Dict] = None,
+    fuser_config: Optional[Dict] = None
 ) -> Tuple[tf.keras.Model, dict]:
     """
     Train the model using traditional, GradientTape, or hybrid staged strategies.
     """
     optimizer = get_optimizer(optimizer_type, initial_lr, weight_decay, first_decay_steps)
 
-    logging.info(f"training_mode: {training_mode}")
+    logging.info(f"TRAINING MODE: {training_mode}")
+    logging.info(f"ARCHITECTURE KIND: {architecture_name}")
 
     if use_gradient_tape:
         return train_with_tape(
@@ -1137,11 +1144,13 @@ def train_model(
         )
 
     model_args = {
-            "input_shape": X_train,
-            "horizon": y_train.shape[1],
-            "strategy_config": model.strategy_config,
-            "architecture_name": architecture_name,
-        }
+        "input_shape": X_train.shape[1:], # Use the shape tuple here too for consistency
+        "horizon": y_train.shape[1],
+        "strategy_config": strategy_config, # <-- Use the argument
+        "extractor_config": extractor_config, # <-- Use the argument
+        "fuser_config": fuser_config, # <-- Use the argument
+        "architecture_name": architecture_name,
+    }
 
     
     if architecture_name == "Seq2Trend":
@@ -1180,6 +1189,7 @@ def train_model(
             batch_size = batch_size,
             patience = patience,
             optimizer_cfg = optimizer_type,
+            initial_lr=initial_lr
         )
 
     return train_modern(
@@ -1205,55 +1215,40 @@ def main_train_model(
     epochs: int = 100,
     batch_size: int = 16,
     patience: int = 25,
+    learning_rate: float = 1e-3,
     training_mode: str = "traditional"
 ) -> Tuple[tf.keras.Model, Dict, np.ndarray]:
-    """
-    Unified entrypoint replacing train_single_model:
-      - Accepts same parameters for backward compatibility.
-      - Trains model and returns predictions on `prediction_input`.
-    """
-    # Extract and remove optional config dicts
+
+    
+    # Extract configs and data
     strategy_config = train_kwargs.get('strategy_config')
     extractor_config = train_kwargs.get('extractor_config')
-    fuser_config     = train_kwargs.get('fuser_config')
-
-
-    # Prepare training data
+    fuser_config = train_kwargs.get('fuser_config')
+    
     X_train = train_kwargs['X_train']
     y_train = train_kwargs['y_train']
     X_val   = train_kwargs.get('X_val')
     y_val   = train_kwargs.get('y_val')
+    
+    # Define shape as a tuple
+    input_shape_tuple = X_train.shape[1:]
 
-    SEQ2SEQ_ARCHS = ["Seq2Context", "Seq2PIN", "Seq2Trend"]
-    if y_train.ndim > 1 and architecture_name in SEQ2SEQ_ARCHS:
-        model = create_model(
-            input_shape=X_train,
-            horizon=y_train.shape[1],
-            strategy_config=strategy_config,
-            extractor_config=extractor_config,
-            fuser_config=fuser_config,
-            architecture_name=architecture_name
-        )
-        model.strategy_config   = strategy_config
+    # Create model creation args
+    model_creation_args = {
+        "input_shape": input_shape_tuple,
+        "architecture_name": architecture_name,
+    }
+    
+    SEQ2SEQ_ARCHS = ["Seq2Context", "Seq2PIN", "Seq2Trend", "Seq2Fuser"]
+    if architecture_name in SEQ2SEQ_ARCHS:
+        model_creation_args.update({
+            "horizon": y_train.shape[1],
+            "strategy_config": strategy_config,
+            "extractor_config": extractor_config,
+            "fuser_config": fuser_config,
+        })
 
-    elif y_train.ndim > 1 and architecture_name=="Seq2Fuser":
-        model = create_model(
-            input_shape=X_train,
-            horizon=y_train.shape[1],
-            strategy_config=strategy_config,
-            extractor_config=extractor_config,
-            fuser_config=fuser_config,
-            architecture_name=architecture_name
-        )
-        # 3) ANEXA as configs como atributos do model
-        model.strategy_config   = strategy_config
-        model.extractor_config  = extractor_config
-        model.fuser_config      = fuser_config
-    else:
-        model = create_model(
-            input_shape=X_train,
-            architecture_name=architecture_name
-        )
+    model = create_model(**model_creation_args)
 
     return train_model(
         model=model,
@@ -1264,6 +1259,10 @@ def main_train_model(
         epochs=epochs,
         batch_size=batch_size,
         patience=patience,
+        initial_lr=learning_rate,
         training_mode=training_mode,
-        architecture_name=architecture_name
+        architecture_name=architecture_name,
+        strategy_config=strategy_config,
+        extractor_config=extractor_config,
+        fuser_config=fuser_config
     )

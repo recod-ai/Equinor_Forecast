@@ -13,171 +13,99 @@ from darts.models import (
 )
 from pytorch_lightning.callbacks import EarlyStopping
 
+# In your `models.py` file, replace the old function with this one.
+
+from typing import Dict, Any
+import torch
+from darts import TimeSeries
+from darts.models import (
+    NHiTSModel, TiDEModel, NLinearModel, NBEATSModel,
+    ARIMA, AutoARIMA, LinearRegressionModel
+)
+from pytorch_lightning.callbacks import EarlyStopping
 
 def train_deep_encoder_model(
     train_series: TimeSeries,
-    train_covariates: TimeSeries,
     val_series: TimeSeries,
-    val_covariates: TimeSeries,
-    *,
-    model_type: str = "NHiTS",
-    output_chunk_length: int | str = 56,
+    model_type: str,
+    output_chunk_length: int,
+    hyperparam_config: Dict[str, Any],  # <-- THE CRUCIAL PARAMETER
+    train_covariates: TimeSeries = None,
+    val_covariates: TimeSeries = None,
 ) -> object:
     """
-    Treina (e devolve) um modelo Darts escolhido por `model_type`.
-
-    Agora, além dos “deep encoders” (“NHiTS”, “TiDE”, “TiDE+RIN”, “NLinear”,
-    “N-Beats”), também suporta:
-
-    - `"ARIMA"`        … ARIMA(p=1, d=1, q=1)          — linear clássico
-    - `"AutoARIMA"`    … AutoArima() (busca automática)
-    - `"LinearRegression"`
-                       … Regressão linear multivariada (lags = input_chunk)
-
-    Os novos modelos são treinados com **hiperparâmetros padrão**, garantindo
-    pleno funcionamento no pipeline sem alterar a lógica downstream.
+    Trains a Darts model chosen by `model_type`, dynamically configured by `hyperparam_config`.
+    This version is driven by the configuration file and is highly flexible.
     """
+    print(f"  > Training model: {model_type} with config: {hyperparam_config}")
+    
+    # Allow accelerator and batch_size to be configured, with safe defaults.
+    accelerator = hyperparam_config.pop("accelerator", "cpu")
+    batch_size = hyperparam_config.pop("batch_size", 16)
 
-    # --------------------- 1. parâmetros comuns aos “deep” ------------------
-    optimizer_kwargs = {"lr": 1e-3}
-    pl_trainer_kwargs = {
-        "gradient_clip_val": 1,
-        "max_epochs": 100,
-        "accelerator": "auto",
-        "callbacks": [],
-    }
-    lr_scheduler_cls = torch.optim.lr_scheduler.ExponentialLR
-    lr_scheduler_kwargs = {"gamma": 0.999}
-
-    early_stopping = EarlyStopping(
-        monitor="val_loss",
-        patience=10,
-        min_delta=1e-3,
-        mode="min",
-    )
-    pl_trainer_kwargs["callbacks"] = [early_stopping]
-
-    common_deep_args: Dict[str, Any] = dict(
-        input_chunk_length=7,
-        output_chunk_length=output_chunk_length,
-        optimizer_kwargs=optimizer_kwargs,
-        pl_trainer_kwargs=pl_trainer_kwargs,
-        lr_scheduler_cls=lr_scheduler_cls,
-        lr_scheduler_kwargs=lr_scheduler_kwargs,
-        save_checkpoints=True,
-        force_reset=True,
-        batch_size=16,
-        random_state=42,
-    )
-
-    # --------------------- 2. map de construtores ---------------------------
-    def _nhits() -> NHiTSModel:
-        return NHiTSModel(
-            **common_deep_args,
-            model_name="NHiTS",
-            num_stacks=3,
-            num_blocks=1,
-            num_layers=2,
-            layer_widths=512,
-            dropout=0.1,
-            activation="ReLU",
-            MaxPool1d=True,
-        )
-
-    def _tide(use_rin: bool = False) -> TiDEModel:
-        return TiDEModel(
-            **common_deep_args,
-            model_name="TiDE" + ("_RIN" if use_rin else ""),
-            use_reversible_instance_norm=use_rin,
-            num_encoder_layers=1,
-            num_decoder_layers=1,
-            decoder_output_dim=16,
-            hidden_size=128,
-            temporal_width_past=4,
-            temporal_width_future=4,
-            temporal_decoder_hidden=32,
-            dropout=0.1,
-        )
-
-    def _nlinear() -> NLinearModel:
-        return NLinearModel(
-            **common_deep_args,
-            model_name="NLinear",
-            output_chunk_shift=0,
-            shared_weights=False,
-            const_init=True,
-            normalize=False,
-            use_static_covariates=True,
-            n_epochs=20,
-        )
-
-    def _nbeats() -> NBEATSModel:
-        return NBEATSModel(
-            **common_deep_args,
-            model_name="NBeats",
-            generic_architecture=True,
-            num_stacks=30,
-            num_blocks=1,
-            num_layers=4,
-            layer_widths=512,
-            dropout=0.1,
-            activation="ReLU",
-        )
-
-    # ---- “clássicos” (não precisam de PyTorch nem validação) ---------------
-    def _arima() -> ARIMA:
-        return ARIMA(p=1, d=1, q=1)
-
-    def _auto_arima() -> AutoARIMA:
-        return AutoARIMA()
-
-    def _linreg() -> LinearRegressionModel:
-        # usa a janela de observação como lag
-        lags = common_deep_args["input_chunk_length"]
-        return LinearRegressionModel(
-            lags=lags,
-            output_chunk_length=output_chunk_length,
-        )
-
-    constructors: Dict[str, Callable[[], object]] = {
-        # deep encoders
-        "NHiTS": _nhits,
-        "TiDE": lambda: _tide(False),
-        "TiDE+RIN": lambda: _tide(True),
-        "NLinear": _nlinear,
-        "N-Beats": _nbeats,
-        # clássicos
-        "ARIMA": _arima,
-        "AutoARIMA": _auto_arima,
-        "LinearRegression": _linreg,
+    # Common arguments for all deep learning models
+    common_deep_args = {
+        "input_chunk_length": 7,
+        "output_chunk_length": output_chunk_length,
+        "optimizer_kwargs": {"lr": 1e-3},
+        "pl_trainer_kwargs": {
+            "gradient_clip_val": 1,
+            "max_epochs": 100,
+            "accelerator": accelerator,
+            "callbacks": [EarlyStopping(monitor="val_loss", patience=10, min_delta=1e-3, mode="min")],
+        },
+        "lr_scheduler_cls": torch.optim.lr_scheduler.ExponentialLR,
+        "lr_scheduler_kwargs": {"gamma": 0.999},
+        "save_checkpoints": False,        # <= NÃO salva checkpoints!
+        "log_tensorboard": False,         # <= NÃO gera logs!
+        "work_dir": "/tmp/darts_noop", 
+        "force_reset": True,
+        "batch_size": batch_size,
+        "random_state": 42,
+        "save_checkpoints": False,
+        "force_reset": True,
+        
     }
 
-    if model_type not in constructors:
-        raise ValueError(f"Modelo desconhecido: {model_type}")
+    # Map model type string to Darts model class
+    model_constructors = {
+        "NHiTS": NHiTSModel, "TiDE": TiDEModel, "TiDE+RIN": TiDEModel,
+        "N-Beats": NBEATSModel, "NLinear": NLinearModel, "ARIMA": ARIMA,
+        "AutoARIMA": AutoARIMA, "LinearRegression": LinearRegressionModel,
+    }
 
-    model = constructors[model_type]()
+    if model_type not in model_constructors:
+        raise ValueError(f"Unknown model_type: '{model_type}'")
 
-    # --------------------- 3. treinamento -----------------------------------
-    if model_type in {"NHiTS", "TiDE", "TiDE+RIN", "NLinear", "N-Beats"}:
-        # deep encoder → com validação
+    ModelClass = model_constructors[model_type]
+    is_deep_learning_model = model_type in {"NHiTS", "TiDE", "TiDE+RIN", "N-Beats", "NLinear"}
+
+    # Instantiate the model with the correct parameters
+    if is_deep_learning_model:
+        # For deep learning, merge common args with specific hyperparams.
+        # The specific hyperparams from the config file will overwrite the defaults.
+        model_params = {**common_deep_args, **hyperparam_config}
+        model = ModelClass(**model_params)
+    else:
+        # For classical models, just use the hyperparams from the config.
+        model_params = hyperparam_config.copy()
+        if model_type == "LinearRegression":
+             model_params['lags'] = common_deep_args['input_chunk_length']
+             model_params['output_chunk_length'] = output_chunk_length
+        model = ModelClass(**model_params)
+
+    # --- Training Logic ---
+    if is_deep_learning_model:
         model.fit(
             series=train_series,
             val_series=val_series,
             # past_covariates=train_covariates,
             # val_past_covariates=val_covariates,
             verbose=False,
+            dataloader_kwargs={"num_workers": 1}
         )
     else:
-        # clássicos → sem val_series (treino único)
-        try:
-            model.fit(
-                series=train_series,
-                # alguns modelos aceitam covariáveis → habilite se quiser
-                # future_covariates=train_covariates,
-                verbose=False,
-            )
-        except TypeError:
-            # ARIMA/AutoARIMA não tem verbose
-            model.fit(train_series)
+        # Classical models do not use a validation set
+        model.fit(series=train_series)
 
     return model

@@ -1,0 +1,451 @@
+# src/experiment_configs/architectures_PINNs.yaml
+
+# ==============================
+# TCN Extractor (5 profiles × 2 fusers)
+# ==============================
+
+arch_tcn_01_bias_scale:
+  extractor_config:
+    type: 'tcn'
+    tcn_layers: 1
+    tcn_filters: 16
+    dropout_rate: 0.0
+  fuser_config:
+    type: 'bias_scale'
+    residual_hidden_units: 16
+    dropout_rate: 0.0
+
+arch_tcn_01_film:
+  extractor_config:
+    type: 'tcn'
+    tcn_layers: 1
+    tcn_filters: 16
+    dropout_rate: 0.0
+  fuser_config:
+    type: 'film'
+    residual_hidden_units: 64
+    dropout_rate: 0.1
+
+arch_tcn_02_bias_scale:
+  extractor_config:
+    type: 'tcn'
+    tcn_layers: 2
+    tcn_filters: 32
+    dropout_rate: 0.05
+  fuser_config:
+    type: 'bias_scale'
+    residual_hidden_units: 16
+    dropout_rate: 0.0
+
+arch_tcn_02_film:
+  extractor_config:
+    type: 'tcn'
+    tcn_layers: 2
+    tcn_filters: 32
+    dropout_rate: 0.05
+  fuser_config:
+    type: 'film'
+    residual_hidden_units: 64
+    dropout_rate: 0.1
+
+arch_tcn_03_bias_scale:
+  extractor_config:
+    type: 'tcn'
+    tcn_layers: 3
+    tcn_filters: 32
+    dropout_rate: 0.1
+  fuser_config:
+    type: 'bias_scale'
+    residual_hidden_units: 16
+    dropout_rate: 0.0
+
+
+# ==============================
+# CNN Extractor (5 profiles × 2 fusers)
+# ==============================
+
+arch_cnn_01_bias_scale:
+  extractor_config:
+    type: 'cnn'
+    cnn_layers: 2
+    cnn_filters: 16
+    cnn_kernel_size: 3
+    dropout_rate: 0.0
+  fuser_config:
+    type: 'bias_scale'
+    residual_hidden_units: 16
+    dropout_rate: 0.0
+
+arch_cnn_01_film:
+  extractor_config:
+    type: 'cnn'
+    cnn_layers: 2
+    cnn_filters: 16
+    cnn_kernel_size: 3
+    dropout_rate: 0.0
+  fuser_config:
+    type: 'film'
+    residual_hidden_units: 64
+    dropout_rate: 0.1
+
+arch_cnn_02_bias_scale:
+  extractor_config:
+    type: 'cnn'
+    cnn_layers: 3
+    cnn_filters: 32
+    cnn_kernel_size: 3
+    dropout_rate: 0.05
+  fuser_config:
+    type: 'bias_scale'
+    residual_hidden_units: 16
+    dropout_rate: 0.0
+
+arch_cnn_02_film:
+  extractor_config:
+    type: 'cnn'
+    cnn_layers: 3
+    cnn_filters: 32
+    cnn_kernel_size: 3
+    dropout_rate: 0.05
+  fuser_config:
+    type: 'film'
+    residual_hidden_units: 64
+    dropout_rate: 0.1
+
+arch_cnn_03_bias_scale:
+  extractor_config:
+    type: 'cnn'
+    cnn_layers: 3
+    cnn_filters: 32
+    cnn_kernel_size: 5
+    dropout_rate: 0.1
+  fuser_config:
+    type: 'bias_scale'
+    residual_hidden_units: 16
+    dropout_rate: 0.0
+
+arch_cnn_03_film:
+  extractor_config:
+    type: 'cnn'
+    cnn_layers: 3
+    cnn_filters: 32
+    cnn_kernel_size: 5
+    dropout_rate: 0.1
+  fuser_config:
+    type: 'film'
+    residual_hidden_units: 64
+    dropout_rate: 0.1
+
+arch_cnn_04_bias_scale:
+  extractor_config:
+    type: 'cnn'
+    cnn_layers: 3
+    cnn_filters: 64
+    cnn_kernel_size: 5
+    dropout_rate: 0.15
+  fuser_config:
+    type: 'bias_scale'
+    residual_hidden_units: 16
+    dropout_rate: 0.0
+
+
+
+# ==============================
+# RNN Extractor (5 profiles × 2 fusers)
+# ==============================
+
+arch_rnn_01_bias_scale:
+  extractor_config:
+    type: 'rnn'
+    rnn_units: 16
+    rnn_layers: 1
+    rnn_type: 'lstm'
+    bidirectional: false
+    dropout_rate: 0.0
+  fuser_config:
+    type: 'bias_scale'
+    residual_hidden_units: 16
+    dropout_rate: 0.0
+
+arch_rnn_01_film:
+  extractor_config:
+    type: 'rnn'
+    rnn_units: 16
+    rnn_layers: 1
+    rnn_type: 'lstm'
+    bidirectional: false
+    dropout_rate: 0.0
+  fuser_config:
+    type: 'film'
+    residual_hidden_units: 64
+    dropout_rate: 0.1
+
+arch_rnn_02_bias_scale:
+  extractor_config:
+    type: 'rnn'
+    rnn_units: 32
+    rnn_layers: 2
+    rnn_type: 'gru'
+    bidirectional: false
+    dropout_rate: 0.05
+  fuser_config:
+    type: 'bias_scale'
+    residual_hidden_units: 16
+    dropout_rate: 0.0
+
+
+arch_rnn_03_bias_scale:
+  extractor_config:
+    type: 'rnn'
+    rnn_units: 32
+    rnn_layers: 2
+    rnn_type: 'lstm'
+    bidirectional: true
+    dropout_rate: 0.1
+  fuser_config:
+    type: 'bias_scale'
+    residual_hidden_units: 16
+    dropout_rate: 0.0
+
+
+
+arch_identity_01_bias_scale:
+  extractor_config:
+    type: 'identity'
+    mode: 'last_step'
+  fuser_config:
+    type: 'bias_scale'
+    residual_hidden_units: 16
+    dropout_rate: 0.0
+
+arch_identity_01_film:
+  extractor_config:
+    type: 'identity'
+    mode: 'last_step'
+  fuser_config:
+    type: 'film'
+    residual_hidden_units: 64
+    dropout_rate: 0.1
+
+arch_identity_02_bias_scale:
+  extractor_config:
+    type: 'identity'
+    mode: 'flatten'
+  fuser_config:
+    type: 'bias_scale'
+    residual_hidden_units: 16
+    dropout_rate: 0.0
+
+arch_identity_02_film:
+  extractor_config:
+    type: 'identity'
+    mode: 'flatten'
+  fuser_config:
+    type: 'film'
+    residual_hidden_units: 64
+    dropout_rate: 0.1
+
+arch_identity_03_bias_scale:
+  extractor_config:
+    type: 'identity'
+    mode: 'none'
+  fuser_config:
+    type: 'bias_scale'
+    residual_hidden_units: 16
+    dropout_rate: 0.0
+
+
+
+arch_agg_01_bias_scale:
+  extractor_config:
+    type: 'aggregate'
+  fuser_config:
+    type: 'bias_scale'
+    residual_hidden_units: 16
+    dropout_rate: 0.0
+
+
+
+# ==============================
+# TCN Extractor × Gating/Concat
+# ==============================
+
+arch_tcn_04_gating:
+  extractor_config:
+    type: 'tcn'
+    tcn_layers: 2
+    tcn_filters: 32
+    dropout_rate: 0.1
+  fuser_config:
+    type: 'gating'
+    residual_hidden_units: 32
+    dropout_rate: 0.1
+    gate_activation: 'sigmoid'
+
+arch_tcn_04_concat:
+  extractor_config:
+    type: 'tcn'
+    tcn_layers: 2
+    tcn_filters: 32
+    dropout_rate: 0.1
+  fuser_config:
+    type: 'concat'
+    residual_hidden_units: 32
+    dropout_rate: 0.1
+
+# ==============================
+# CNN Extractor × Gating/Concat
+# ==============================
+
+arch_cnn_05_gating:
+  extractor_config:
+    type: 'cnn'
+    cnn_layers: 3
+    cnn_filters: 32
+    cnn_kernel_size: 3
+    dropout_rate: 0.1
+  fuser_config:
+    type: 'gating'
+    residual_hidden_units: 32
+    dropout_rate: 0.05
+    gate_activation: 'relu'
+
+arch_cnn_05_concat:
+  extractor_config:
+    type: 'cnn'
+    cnn_layers: 3
+    cnn_filters: 32
+    cnn_kernel_size: 3
+    dropout_rate: 0.1
+  fuser_config:
+    type: 'concat'
+    residual_hidden_units: 32
+    dropout_rate: 0.05
+
+arch_cnn_06_gating:
+  extractor_config:
+    type: 'cnn'
+    cnn_layers: 2
+    cnn_filters: 64
+    cnn_kernel_size: 5
+    dropout_rate: 0.15
+  fuser_config:
+    type: 'gating'
+    residual_hidden_units: 64
+    dropout_rate: 0.15
+    gate_activation: 'sigmoid'
+
+arch_cnn_06_concat:
+  extractor_config:
+    type: 'cnn'
+    cnn_layers: 2
+    cnn_filters: 64
+    cnn_kernel_size: 5
+    dropout_rate: 0.15
+  fuser_config:
+    type: 'concat'
+    residual_hidden_units: 64
+    dropout_rate: 0.15
+
+# ==============================
+# RNN Extractor × Gating/Concat
+# ==============================
+
+arch_rnn_04_gating:
+  extractor_config:
+    type: 'rnn'
+    rnn_units: 64
+    rnn_layers: 2
+    rnn_type: 'gru'
+    bidirectional: true
+    dropout_rate: 0.2
+  fuser_config:
+    type: 'gating'
+    residual_hidden_units: 32
+    dropout_rate: 0.2
+    gate_activation: 'sigmoid'
+
+arch_rnn_04_concat:
+  extractor_config:
+    type: 'rnn'
+    rnn_units: 64
+    rnn_layers: 2
+    rnn_type: 'gru'
+    bidirectional: true
+    dropout_rate: 0.2
+  fuser_config:
+    type: 'concat'
+    residual_hidden_units: 32
+    dropout_rate: 0.2
+
+arch_rnn_05_gating:
+  extractor_config:
+    type: 'rnn'
+    rnn_units: 32
+    rnn_layers: 1
+    rnn_type: 'lstm'
+    bidirectional: false
+    dropout_rate: 0.0
+  fuser_config:
+    type: 'gating'
+    residual_hidden_units: 16
+    dropout_rate: 0.05
+    gate_activation: 'relu'
+
+arch_rnn_05_concat:
+  extractor_config:
+    type: 'rnn'
+    rnn_units: 32
+    rnn_layers: 1
+    rnn_type: 'lstm'
+    bidirectional: false
+    dropout_rate: 0.0
+  fuser_config:
+    type: 'concat'
+    residual_hidden_units: 16
+    dropout_rate: 0.05
+
+# ==============================
+# Identity Extractor × Gating/Concat
+# ==============================
+
+arch_identity_04_gating:
+  extractor_config:
+    type: 'identity'
+    mode: 'last_step'
+  fuser_config:
+    type: 'gating'
+    residual_hidden_units: 32
+    dropout_rate: 0.0
+    gate_activation: 'sigmoid'
+
+arch_identity_04_concat:
+  extractor_config:
+    type: 'identity'
+    mode: 'last_step'
+  fuser_config:
+    type: 'concat'
+    residual_hidden_units: 32
+    dropout_rate: 0.0
+
+# ==============================
+# Aggregate Extractor × Gating/Concat
+# ==============================
+
+arch_agg_02_gating:
+  extractor_config:
+    type: 'aggregate'
+  fuser_config:
+    type: 'gating'
+    residual_hidden_units: 16
+    dropout_rate: 0.05
+    gate_activation: 'sigmoid'
+
+arch_agg_02_concat:
+  extractor_config:
+    type: 'aggregate'
+  fuser_config:
+    type: 'concat'
+    residual_hidden_units: 16
+    dropout_rate: 0.05
+

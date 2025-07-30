@@ -57,3 +57,79 @@ def save_experiment_to_excel(configs: Dict[str, Any],
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
 
     return exp_dir
+
+# In src/forecast_pipeline/io_utils.py
+
+import json
+import os
+import tempfile
+import datetime
+import platform
+import subprocess
+from pathlib import Path
+from typing import Dict, Any
+
+def atomic_write_json(data: Dict[str, Any], dest: str | os.PathLike):
+    """
+    Atomically writes a dictionary to a JSON file.
+
+    It first writes to a temporary file in the same directory, then
+    renames it. This is a safe, atomic operation on most systems and
+    prevents file corruption if the process is interrupted.
+    """
+    dest_path = Path(dest)
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Write to a temporary file in the same directory.
+    # The 'delete=False' is crucial on Windows.
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=dest_path.parent, delete=False) as tmp_file:
+        json.dump(data, tmp_file, indent=2, default=str)
+        tmp_path = tmp_file.name # Get the temp file path
+    
+    # The atomic operation: rename the completed temp file to the final destination.
+    # On POSIX, this is an atomic move. On Windows, it's a safe replace.
+    os.replace(tmp_path, dest_path)
+
+
+def build_run_metadata() -> Dict[str, Any]:
+    """
+    Gathers key environment and execution metadata for reproducibility.
+    """
+    try:
+        git_hash = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        git_hash = "unknown"
+        
+    return {
+        "run_timestamp_utc": datetime.datetime.utcnow().isoformat(),
+        "hostname": platform.node(),
+        "python_version": platform.python_version(),
+        "git_commit_hash": git_hash,
+    }
+
+import logging
+from colorlog import ColoredFormatter
+from forecast_pipeline.config import LOG_LEVEL
+def configure_logging():
+    """Set up a colored logger respecting the global LOG_LEVEL."""
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        ColoredFormatter(
+            "%(log_color)s%(asctime)s [%(levelname)-7s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+            log_colors={
+                'DEBUG':    'cyan',
+                'INFO':     'blue',
+                'WARNING':  'yellow',
+                'ERROR':    'red',
+                'CRITICAL': 'bold_red',
+            }
+        )
+    )
+    root = logging.getLogger()
+    root.handlers = [handler]
+    # Map 0→WARNING, 1→INFO, 2→DEBUG
+    level = {0: logging.WARNING, 1: logging.INFO, 2: logging.DEBUG}
+    root.setLevel(level.get(LOG_LEVEL, logging.INFO))

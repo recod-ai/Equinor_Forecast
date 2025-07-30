@@ -27,8 +27,6 @@ class ExperimentSeq2Context(BaseExperiment):
             "selected_features",
             self.config.get("features", [main])
         )
-        if self.params.get("use_known_good", False):
-            feats = ['BORE_GAS_VOL','CE','PI','BORE_OIL_VOL_Original', main]
         return main, feats
 
     def get_params(self):
@@ -42,72 +40,90 @@ class ExperimentSeq2Context(BaseExperiment):
         """
         pass
 
+    # In src/forecast_pipeline/experiments/seq2context.py
+    
     def load_and_prepare(self):
         """
-        Load, preprocess, optional filter, and prepare model inputs.
+        Load, preprocess, and prepare model inputs.
     
-        Returns:
-          train_kwargs: dict containing training and validation data plus config.
-          prediction_input: test input data for inference.
-          y_test: test targets (scaled).
-          scaler_target: scaler for the target variable.
-          y_train_original: original unscaled training targets.
+        This version is now architecture-aware, handling different configuration
+        requirements for Seq2Context, Seq2PIN, etc., and is compatible with
+        both legacy and profile-driven (HPO) execution modes.
         """
-        # 1) Retrieve parameters and feature definitions
+        # 1. Retrieve parameters and load data (this part is unchanged)
+        # -----------------------------------------------------------------
         p = self.get_params()
         main, feats = self.get_features()
-
-        # 2) Load and preprocess data, then split into train, validation, and test
         df = load_and_preprocess_data(DataSource, self.config, feats, self.well)
-
-        # logging.info(df.head())
-        # logging.info(df.describe())
+    
+        aug_params = {"data_sample": p.get("data_sample", 0.5)}
         (
             X_train, X_val, X_test,
             y_train, y_val, y_test,
-            scaler_target,
-            y_train_original
+            scaler_target, y_train_original
         ) = prepare_data_seq(
-            df,
-            main,
-            p["lag_window"],
-            p["horizon"],
-            test_size=p.get("test_size", 0.6),
-            val_size=p.get("val_size", 0.1),
-            data_aug=True
+            df, main, p["lag_window"], p["horizon"],
+            test_size=p.get("test_size", 0.6), val_size=p.get("val_size", 0.1),
+            data_aug=True, data_aug_params=aug_params
         )
-    
-        # 3) Optional adaptive filtering on train, validation, and test sets
+        
         if p.get("apply_adaptive_filtering", False):
             X_train, y_train = apply_filter_to_X_and_y(
-                X_train, y_train,
-                method=p["filter_method"],
-                **p.get("filter_kwargs", {})
+                X_train, y_train, method=p["filter_method"], **p.get("filter_kwargs", {})
             )
             X_val, y_val = apply_filter_to_X_and_y(
-                X_val, y_val,
-                method=p["filter_method"],
-                **p.get("filter_kwargs", {})
+                X_val, y_val, method=p["filter_method"], **p.get("filter_kwargs", {})
             )
             X_test, y_test = apply_filter_to_X_and_y(
-                X_test, y_test,
-                method=p["filter_method"],
-                **p.get("filter_kwargs", {})
+                X_test, y_test, method=p["filter_method"], **p.get("filter_kwargs", {})
             )
     
-        # 4) Prepare train_kwargs and prediction_input directly
-        train_kwargs = {
-            "X_train": X_train,
-            "y_train": y_train,
-            "X_val":   X_val,
-            "y_val":   y_val,
-            "strategy_config": p["strategy_config"],
-            "extractor_config": p["extractor_config"],
-            "fuser_config": p["fuser_config"]
-        }
-        prediction_input = X_test
-
+        # 2. Build the training arguments dictionary (train_kwargs)
+        # -----------------------------------------------------------------
         
+        # Get the specific architecture for this job to make decisions
+        arch_name = p.get("architecture_name")
     
+        # Start with the core data, which is common to all models
+        train_kwargs = {
+            "X_train": X_train, "y_train": y_train,
+            "X_val":   X_val,   "y_val":   y_val,
+        }
+    
+        # --- Configuration Adapter Logic ---
+        # This block ensures the correct config dictionaries are created and added.
+    
+        # a) Handle `strategy_config` (required by all Seq2* models)
+        if "strategy_config" in p:
+            # Legacy mode: The dictionary is already built.
+            train_kwargs["strategy_config"] = p["strategy_config"]
+        else:
+            # Profile-driven mode: Build it from the flat key.
+            if "physics_strategy" not in p:
+                raise KeyError("'physics_strategy' is missing from the experiment profile.")
+            train_kwargs["strategy_config"] = {"strategy_name": p["physics_strategy"]}
+    
+        # b) Handle `extractor_config` and `fuser_config` (only for specific architectures)
+        if arch_name in ["Seq2Context", "Seq2Fuser"]:
+            # These architectures require the data-driven components.
+            if "extractor_config" in p and "fuser_config" in p:
+                # Legacy mode: The dictionaries are already built.
+                train_kwargs["extractor_config"] = p["extractor_config"]
+                train_kwargs["fuser_config"] = p["fuser_config"]
+            else:
+                # Profile-driven mode: Get them from the expanded profile.
+                if "extractor_config" not in p:
+                    raise KeyError(f"'extractor_config' is required for {arch_name} but is missing.")
+                if "fuser_config" not in p:
+                    raise KeyError(f"'fuser_config' is required for {arch_name} but is missing.")
+                train_kwargs["extractor_config"] = p["extractor_config"]
+                train_kwargs["fuser_config"] = p["fuser_config"]
+                
+        # For other architectures like Seq2PIN or Seq2Trend, extractor/fuser configs are simply not added,
+        # which is the correct behavior as they are not used by their respective create_model functions.
+        
+        # 3. Final return (unchanged)
+        # -----------------------------------------------------------------
+        prediction_input = X_test
         return train_kwargs, prediction_input, y_test, scaler_target, y_train_original
 

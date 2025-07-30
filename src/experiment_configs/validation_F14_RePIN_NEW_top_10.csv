@@ -1,0 +1,11 @@
+architecture_profile,batch_size,data_sample,epochs,lag_window,learning_rate,physics_strategy,experiment_id,seed
+arch_rnn_02_bias_scale,16,0.25,100,15,0.0015806210634149425,combined_exp_arps,validation_F14_RePIN_NEW_rank_01,42
+arch_cnn_05_gating,16,0.5,300,7,0.033259696715309456,pressure_ensemble,validation_F14_RePIN_NEW_rank_02,42
+arch_identity_02_bias_scale,64,0.5,200,7,0.03225216935893268,static,validation_F14_RePIN_NEW_rank_03,42
+arch_cnn_02_film,32,0.25,100,3,0.0006555956606594541,combined_exp_arps,validation_F14_RePIN_NEW_rank_04,42
+arch_cnn_01_bias_scale,64,0.25,50,30,0.005237575916288759,combined_exp_arps,validation_F14_RePIN_NEW_rank_05,42
+arch_cnn_02_film,16,0.25,100,15,0.000636674711565606,combined_exp_arps,validation_F14_RePIN_NEW_rank_06,42
+arch_cnn_01_bias_scale,64,0.25,50,15,0.010999444431606265,combined_exp_arps,validation_F14_RePIN_NEW_rank_07,42
+arch_tcn_04_concat,16,0.5,200,15,0.0001171322987570106,static,validation_F14_RePIN_NEW_rank_08,42
+arch_tcn_02_bias_scale,32,0.5,200,15,0.00045427874679208663,static,validation_F14_RePIN_NEW_rank_09,42
+arch_cnn_03_film,16,0.25,100,3,0.011951843337488593,static,validation_F14_RePIN_NEW_rank_10,42

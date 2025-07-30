@@ -1,0 +1,64 @@
+Input Notebook:  experiment_template.ipynb
+Output Notebook: papermill_outputs/notebooks/output-NHiTS-Large_and_Robust.ipynb
+Executing:   0%|          | 0/6 [00:00<?, ?cell/s]Executing notebook with kernel: myenv310
+Executing Cell 1---------------------------------------
+Ending Cell 1------------------------------------------
+Executing:  17%|█▋        | 1/6 [00:00<00:03,  1.34cell/s]Executing Cell 2---------------------------------------
+Ending Cell 2------------------------------------------
+Executing Cell 3---------------------------------------
+Ending Cell 3------------------------------------------
+Executing:  50%|█████     | 3/6 [11:16<12:31, 250.50s/cell]Executing Cell 4---------------------------------------
+Ending Cell 4------------------------------------------
+Executing:  67%|██████▋   | 4/6 [16:38<09:10, 275.10s/cell]Executing Cell 5---------------------------------------
+
+============================================================
+🏁 JOB EXECUTION COMPLETE
+
+✅ Successfully saved 17 results to papermill_outputs/results/results-NHiTS-Large_and_Robust.csv
+
+--- Metrics for this specific job ---
+
+           R²      SMAPE           MAE         Well Method    Category  \
+0    0.931248   0.165094   2080.650882         wind  NHiTS  Cumulative   
+1  -60.611942  11.601346  39419.232382        solar  NHiTS  Cumulative   
+2    0.967239   0.123687  19035.030283         load  NHiTS  Cumulative   
+3    0.881280   0.220960  17781.099432    15/9-F-14  NHiTS  Cumulative   
+4    0.897321   0.226808  20208.796070    15/9-F-12  NHiTS  Cumulative   
+5    0.994974   0.052970   1328.907442    15/9-F-11  NHiTS  Cumulative   
+6    0.916982   0.144034    730.305186  15/9-F-15 D  NHiTS  Cumulative   
+7    0.997501   0.036239    320.713911       Prod-1  NHiTS  Cumulative   
+8    0.999640   0.013566    104.568499       Prod-2  NHiTS  Cumulative   
+9    0.999502   0.017005    136.199191       Prod-3  NHiTS  Cumulative   
+10   0.955232   0.151902   1371.167503       Prod-4  NHiTS  Cumulative   
+11   0.968210   0.125349   1141.117282       Prod-5  NHiTS  Cumulative   
+12   0.993411   0.059155    437.102277       Prod-6  NHiTS  Cumulative   
+13   0.996868   0.032265    282.390048       Prod-7  NHiTS  Cumulative   
+14   0.964876   0.135270    949.769307       Prod-8  NHiTS  Cumulative   
+15   0.998701   0.019840    159.371958       Prod-9  NHiTS  Cumulative   
+16   0.989983   0.066392    646.550347      Prod-10  NHiTS  Cumulative   
+
+           Setting  
+0   Large & Robust  
+1   Large & Robust  
+2   Large & Robust  
+3   Large & Robust  
+4   Large & Robust  
+5   Large & Robust  
+6   Large & Robust  
+7   Large & Robust  
+8   Large & Robust  
+9   Large & Robust  
+10  Large & Robust  
+11  Large & Robust  
+12  Large & Robust  
+13  Large & Robust  
+14  Large & Robust  
+15  Large & Robust  
+16  Large & Robust  
+
+--- Notebook execution finished. ---
+
+Ending Cell 5------------------------------------------
+Executing Cell 6---------------------------------------
+Ending Cell 6------------------------------------------
+Executing: 100%|██████████| 6/6 [16:39<00:00, 166.55s/cell]

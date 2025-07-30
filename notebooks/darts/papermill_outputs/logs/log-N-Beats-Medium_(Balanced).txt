@@ -1,0 +1,64 @@
+Input Notebook:  experiment_template.ipynb
+Output Notebook: papermill_outputs/notebooks/output-N-Beats-Medium_(Balanced).ipynb
+Executing:   0%|          | 0/6 [00:00<?, ?cell/s]Executing notebook with kernel: myenv310
+Executing Cell 1---------------------------------------
+Ending Cell 1------------------------------------------
+Executing:  17%|█▋        | 1/6 [00:00<00:03,  1.44cell/s]Executing Cell 2---------------------------------------
+Ending Cell 2------------------------------------------
+Executing Cell 3---------------------------------------
+Ending Cell 3------------------------------------------
+Executing:  50%|█████     | 3/6 [22:02<24:29, 489.85s/cell]Executing Cell 4---------------------------------------
+Ending Cell 4------------------------------------------
+Executing:  67%|██████▋   | 4/6 [44:38<26:19, 789.52s/cell]Executing Cell 5---------------------------------------
+
+============================================================
+🏁 JOB EXECUTION COMPLETE
+
+✅ Successfully saved 17 results to papermill_outputs/results/results-N-Beats-Medium_(Balanced).csv
+
+--- Metrics for this specific job ---
+
+           R²     SMAPE           MAE         Well   Method    Category  \
+0    0.901784  0.185662   2334.620601         wind  N-Beats  Cumulative   
+1  -40.761220  9.730877  32601.232667        solar  N-Beats  Cumulative   
+2    0.961249  0.135694  20877.646630         load  N-Beats  Cumulative   
+3    0.152797  0.607416  49000.348982    15/9-F-14  N-Beats  Cumulative   
+4    0.910185  0.248994  22172.606851    15/9-F-12  N-Beats  Cumulative   
+5    0.998783  0.026986    671.681200    15/9-F-11  N-Beats  Cumulative   
+6    0.999835  0.005763     29.217576  15/9-F-15 D  N-Beats  Cumulative   
+7    0.994287  0.055702    492.776159       Prod-1  N-Beats  Cumulative   
+8    0.999780  0.010024     77.338645       Prod-2  N-Beats  Cumulative   
+9    0.950476  0.160469   1286.080394       Prod-3  N-Beats  Cumulative   
+10   0.970095  0.122236   1103.903879       Prod-4  N-Beats  Cumulative   
+11   0.903359  0.216703   1971.850984       Prod-5  N-Beats  Cumulative   
+12   0.993747  0.056644    418.688053       Prod-6  N-Beats  Cumulative   
+13   0.983097  0.093107    812.930739       Prod-7  N-Beats  Cumulative   
+14   0.943538  0.169172   1187.909674       Prod-8  N-Beats  Cumulative   
+15   0.973847  0.113109    905.520640       Prod-9  N-Beats  Cumulative   
+16   0.985976  0.083861    815.715801      Prod-10  N-Beats  Cumulative   
+
+              Setting  
+0   Medium (Balanced)  
+1   Medium (Balanced)  
+2   Medium (Balanced)  
+3   Medium (Balanced)  
+4   Medium (Balanced)  
+5   Medium (Balanced)  
+6   Medium (Balanced)  
+7   Medium (Balanced)  
+8   Medium (Balanced)  
+9   Medium (Balanced)  
+10  Medium (Balanced)  
+11  Medium (Balanced)  
+12  Medium (Balanced)  
+13  Medium (Balanced)  
+14  Medium (Balanced)  
+15  Medium (Balanced)  
+16  Medium (Balanced)  
+
+--- Notebook execution finished. ---
+
+Ending Cell 5------------------------------------------
+Executing Cell 6---------------------------------------
+Ending Cell 6------------------------------------------
+Executing: 100%|██████████| 6/6 [44:41<00:00, 446.84s/cell]

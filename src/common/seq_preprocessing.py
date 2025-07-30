@@ -94,120 +94,102 @@ if DEFAULT_DATASET == "VOLVE":
         output_length: int,
         test_size: float = 0.6,
         val_size: float = 0.1,
-        data_aug: bool = True
+        data_aug: bool = True,
+        data_aug_params: Optional[Dict[str, Any]] = None
     ):
         """
-        Prepara os dados para seq-to-seq usando início do teste como validação (sem embaralhar):
+        Prepares seq-to-seq data using traditional chronological split:
+        - Train: from start to (1 - test_size - val_size)
+        - Validation: next val_size
+        - Test: last test_size
     
-        1. Divide cronologicamente em (treino) e (teste).
-        2. Cria janelas deslizantes para treino e teste.
-        3. (Opcional) Data augmentation no conjunto de treino.
-        4. Separa características não-alvo e alvo, achata, escala e remonta janelas.
-        5. Calcula y escalado para treino e teste.
-        6. Usa os primeiros val_size% de TESTE como validação.
-    
-        Retorna:
+        Returns:
           X_train, X_val, X_test,
           y_train, y_val, y_test,
           scaler_target,
           y_train_original
         """
-        # 1. Split temporally em treino+val e teste
-        df_temp, df_test = split_time_series(df, test_size) 
+    
+        n = len(df)
+        test_start = int(n * (1 - test_size))
+        val_start = int(n * (1 - test_size - val_size))
+    
+        df_train = df.iloc[:val_start]
+        df_val   = df.iloc[val_start:test_start]
+        df_test  = df.iloc[test_start:]
     
         # 2. Sliding windows
-        X_temp, y_temp = create_sliding_window_seq_to_seq(
-            df_temp, target_col, input_length, output_length
-        )
-        X_test_all, y_test_all = create_sliding_window_seq_to_seq(
-            df_test, target_col, input_length, output_length
-        )
+        X_train, y_train = create_sliding_window_seq_to_seq(df_train, target_col, input_length, output_length)
+        X_val, y_val     = create_sliding_window_seq_to_seq(df_val,   target_col, input_length, output_length)
+        X_test, y_test   = create_sliding_window_seq_to_seq(df_test,  target_col, input_length, output_length)
     
         # Keep original y_train
-        y_train_original = y_temp.copy()
+        y_train_original = y_train.copy()
     
-        # 3. Data augmentation (apenas em treino)
+        # 3. Data augmentation (train only)
         if data_aug:
-            X_temp, y_temp = augment_with_synthetic_samples(X_temp, y_temp)
+            aug_params = data_aug_params or {}
+            X_train, y_train = augment_with_synthetic_samples(
+                X_train, y_train, data_sample=aug_params.get('data_sample', 0.25)
+            )
     
-        # if data_aug:
-        #     X_temp, y_temp = augment_phys(
-        #         X_temp, y_temp,
-        #         feature_indices={
-        #                 "PI":0,
-        #                 "CE":1,
-        #                 "BORE_GAS_VOL":2,
-        #                 "AVG_DOWNHOLE_PRESSURE":3,
-        #                 "AVG_WHP_P":4,
-        #                 "Tempo_Inicio_Prod":5,
-        #                 "Taxa_Declinio":6,
-        #                 "BORE_OIL_VOL":7,
-        #         },
-        #         scale_factors=(1.5, 2, 3, 5, 7, 9, 11, 13, 15, 19),
-        #         use_scale=True,
-        #         use_jitter=False,
-        #         use_decline_warp=False,
-        #         n_bootstrap=0,           # duas cópias bootstrap
-        #         sigma_pressure=8.0,
-        #         random_state=42
-        #     )
+        # 4. Separate features / target in X
+        X_train_feats = X_train[:, :, :-1]
+        X_train_targ  = X_train[:, :, -1:].reshape(-1, 1)
+        X_val_feats   = X_val[:, :, :-1]
+        X_val_targ    = X_val[:, :, -1:].reshape(-1, 1)
+        X_test_feats  = X_test[:, :, :-1]
+        X_test_targ   = X_test[:, :, -1:].reshape(-1, 1)
     
+        # Flatten for scaling
+        n_train, win_len, n_feat = X_train_feats.shape
+        n_val   = X_val_feats.shape[0]
+        n_test  = X_test_feats.shape[0]
     
-        # 4. Separa features / target em X
-        X_temp_feats = X_temp[:, :, :-1]
-        X_temp_targ  = X_temp[:, :, -1:].reshape(-1, 1)
-        X_test_feats = X_test_all[:, :, :-1]
-        X_test_targ  = X_test_all[:, :, -1:].reshape(-1, 1)
+        X_train_flat = X_train_feats.reshape(-1, n_feat)
+        X_val_flat   = X_val_feats.reshape(-1, n_feat)
+        X_test_flat  = X_test_feats.reshape(-1, n_feat)
     
-        # Achata para escalar
-        n_temp, win_len, n_feat = X_temp_feats.shape
-        n_test = X_test_feats.shape[0]
-        X_temp_flat = X_temp_feats.reshape(-1, n_feat)
-        X_test_flat = X_test_feats.reshape(-1, n_feat)
-    
-        # 5a. Escala features
+        # 5a. Scale features
         scaler_X = StandardScaler()
-        # scaler_X = RobustScaler()
-        X_temp_scaled_feats = scaler_X.fit_transform(X_temp_flat)
-        X_test_scaled_feats = scaler_X.transform(X_test_flat)
-        X_temp_scaled_feats = X_temp_scaled_feats.reshape(n_temp, win_len, n_feat)
-        X_test_scaled_feats = X_test_scaled_feats.reshape(n_test, win_len, n_feat)
+        scaler_X = RobustScaler()
+        X_train_scaled_feats = scaler_X.fit_transform(X_train_flat)
+        X_val_scaled_feats   = scaler_X.transform(X_val_flat)
+        X_test_scaled_feats  = scaler_X.transform(X_test_flat)
+    
+        X_train_scaled_feats = X_train_scaled_feats.reshape(n_train, win_len, n_feat)
+        X_val_scaled_feats   = X_val_scaled_feats.reshape(n_val, win_len, n_feat)
+        X_test_scaled_feats  = X_test_scaled_feats.reshape(n_test, win_len, n_feat)
         save_scaler(scaler_X, 'scalers/scaler_X.pkl')
     
-        # 5b. Escala target em X
+        # 5b. Scale target
         scaler_target = StandardScaler()
-        # scaler_target = RobustScaler()
-        X_temp_scaled_targ = scaler_target.fit_transform(X_temp_targ)
-        X_test_scaled_targ = scaler_target.transform(X_test_targ)
-        X_temp_scaled_targ = X_temp_scaled_targ.reshape(n_temp, win_len, 1)
-        X_test_scaled_targ = X_test_scaled_targ.reshape(n_test, win_len, 1)
+        scaler_target = RobustScaler()
+        X_train_scaled_targ = scaler_target.fit_transform(X_train_targ)
+        X_val_scaled_targ   = scaler_target.transform(X_val_targ)
+        X_test_scaled_targ  = scaler_target.transform(X_test_targ)
+    
+        X_train_scaled_targ = X_train_scaled_targ.reshape(n_train, win_len, 1)
+        X_val_scaled_targ   = X_val_scaled_targ.reshape(n_val, win_len, 1)
+        X_test_scaled_targ  = X_test_scaled_targ.reshape(n_test, win_len, 1)
         save_scaler(scaler_target, 'scalers/scaler_target.pkl')
     
-        # 6. Reconstroi janelas escaladas
-        X_temp_scaled = np.concatenate([X_temp_scaled_feats, X_temp_scaled_targ], axis=-1)
-        X_test_scaled = np.concatenate([X_test_scaled_feats, X_test_scaled_targ], axis=-1)
+        # 6. Rebuild scaled windows
+        X_train_scaled = np.concatenate([X_train_scaled_feats, X_train_scaled_targ], axis=-1)
+        X_val_scaled   = np.concatenate([X_val_scaled_feats, X_val_scaled_targ], axis=-1)
+        X_test_scaled  = np.concatenate([X_test_scaled_feats, X_test_scaled_targ], axis=-1)
     
-        # 7. Escala y
-        y_temp_flat = y_temp.flatten().reshape(-1, 1)
-        y_temp_scaled = scaler_target.transform(y_temp_flat).flatten().reshape(y_temp.shape)
-        y_test_flat = y_test_all.flatten().reshape(-1, 1)
-        y_test_scaled = scaler_target.transform(y_test_flat).flatten().reshape(y_test_all.shape)
-    
-        # 8. Usa início de TESTE como validação
-        n_test_windows = X_test_scaled.shape[0]
-        n_val = int(n_test_windows * val_size)
-        X_val = X_test_scaled[:n_val]
-        y_val = y_test_scaled[:n_val]
-        X_test = X_test_scaled[n_val:]
-        y_test = y_test_scaled[n_val:]
-    
-        # Conjunto de treino completo é X_temp_scaled
-        X_train = X_temp_scaled
-        y_train = y_temp_scaled
+        # 7. Scale y
+        y_train_flat = y_train.flatten().reshape(-1, 1)
+        y_train_scaled = scaler_target.transform(y_train_flat).flatten().reshape(y_train.shape)
+        y_val_flat = y_val.flatten().reshape(-1, 1)
+        y_val_scaled = scaler_target.transform(y_val_flat).flatten().reshape(y_val.shape)
+        y_test_flat = y_test.flatten().reshape(-1, 1)
+        y_test_scaled = scaler_target.transform(y_test_flat).flatten().reshape(y_test.shape)
     
         return (
-            X_train, X_val, X_test,
-            y_train, y_val, y_test,
+            X_train_scaled, X_val_scaled, X_test_scaled,
+            y_train_scaled, y_val_scaled, y_test_scaled,
             scaler_target,
             y_train_original
         )

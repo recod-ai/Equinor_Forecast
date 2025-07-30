@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional
 # I. ARCHITECTURE SELECTION
 # -------------------------------------------------------------------
 # Change this to switch architecture:
-ARCH: str = "Seq2Context"
+ARCH: str = "Seq2Trend"
 
 # Which of the family of seq2seq models we support
 SEQ2SEQ_ARCHS: List[str] = ["Seq2Context", "Seq2PIN", "Seq2Trend", "Seq2Fuser"]
@@ -45,12 +45,15 @@ class DefaultExperimentParams:
     architecture_name: str     = ARCH
     feature_kind: str          = "Normal"
     use_known_good: bool       = False
+    data_sample: float         = 0.9
     lag_window: int            = 30
     horizon: int               = 30
-    epochs: int                = 100
+    epochs: int                = 20
     batch_size: int            = 16
-    patience: int              = 150
-    test_size: float           = 0.6
+    patience: int              = 100
+    learning_rate:float        = 5e-3
+    test_size: float           = 0.5
+    val_size: float            = 0.1
     aggregation_method: str    = "median"
     evaluate_by_slice: bool    = True
     slice_ratios: List[float]  = (1.0,)
@@ -69,7 +72,7 @@ DEFAULT_EXP_PARAMS: Dict[str, Any] = DefaultExperimentParams().__dict__
 # III. LOG LEVEL AND PARALLELISM
 # -------------------------------------------------------------------
 LOG_LEVEL: int    = 1    # 0 → progress bar only; 1 → adds logging.info; 2 → all detailed outputs
-MAX_WORKERS: int  = 10    # Maximum number of workers for parallelism
+MAX_WORKERS: int  = 1    # Maximum number of workers for parallelism
 
 
 # -------------------------------------------------------------------
@@ -92,8 +95,8 @@ else:
         # {"type": "tcn"},
         # {"type": "rnn"},
         # {"type": "cnn"},
-        {"type": "aggregate"},
-        # {"type": "identity"},
+        # {"type": "aggregate"},
+        {"type": "identity"},
     ]
     FUSER_OPTIONS: List[Dict[str, str]] = [
         # {"type": "film"},
@@ -120,6 +123,30 @@ else:
 #     "aggregation_quantiles": [0.25, 0.5, 0.75],
 #     "plot": False,
 # }
+
+from pathlib import Path
+
+# =============================================================================
+# I. CORE PROJECT PATHS
+# =============================================================================
+
+# Define the absolute root of the project
+# This assumes config.py is in src/forecast_pipeline/
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+# Centralized directory for all experiment input files
+EXPERIMENT_CONFIG_DIR = PROJECT_ROOT / "src" / "experiment_configs"
+
+# Directory for architecture definitions
+ARCHITECTURE_YAML_PATH = EXPERIMENT_CONFIG_DIR / "architectures_PINNs.yaml"
+
+# NEW: Centralized directory for all generated profiles (grid search, HPO, etc.)
+PROFILES_DIR = EXPERIMENT_CONFIG_DIR / "profiles"
+
+# NEW: Centralized root directory for all experiment outputs (results, plots, etc.)
+EXPERIMENTS_OUTPUT_DIR = EXPERIMENT_CONFIG_DIR / "results"
+
+HPO_STUDIES_DIR = EXPERIMENT_CONFIG_DIR / "studies"
 
 
 # =============================================================================

@@ -701,6 +701,7 @@ def _chunk_worker(
     epochs,
     batch_size,
     patience,
+    learning_rate,
     max_retries,
     skip_on_failure,
     agg_sigma="approx",  # "approx" → σ_ens² = mean(σ_i²) + var(μ_i)
@@ -715,10 +716,10 @@ def _chunk_worker(
     # ------------------------------------------------------------------
     # 0.  Imports locais
     # ------------------------------------------------------------------
-    # import numpy as np
-    # import tensorflow as tf
-    # import gc, logging
-    # import os, random
+    import numpy as np
+    import tensorflow as tf
+    import gc, logging
+    import os, random
 
     # seed = 42
     # os.environ['PYTHONHASHSEED'] = str(seed)
@@ -728,7 +729,7 @@ def _chunk_worker(
     # tf.random.set_seed(seed)
     # tf.config.experimental.enable_op_determinism()
 
-    # with_snapshots = True
+    with_snapshots = True
 
     # ------------------------------------------------------------------
     # 1.  Mapas utilitários
@@ -834,7 +835,7 @@ def _chunk_worker(
                 try:
                     model, _ = build_fn(
                         arch, kind, train_kwargs, data_inputs,
-                        epochs, batch_size, patience
+                        epochs, batch_size, patience, learning_rate
                     )
 
                     outs_test, used_snaps = _predict(model, X_test, with_snapshots)
@@ -926,6 +927,7 @@ def train_predict_chunk(
     epochs: int,
     batch_size: int,
     patience: int,
+    learning_rate: float,
     max_retries: int,
     skip_on_failure: bool
 ) -> dict:
@@ -946,6 +948,7 @@ def train_predict_chunk(
             epochs,
             batch_size,
             patience,
+            learning_rate,
             max_retries,
             skip_on_failure,
         )

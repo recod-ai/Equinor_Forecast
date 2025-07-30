@@ -1,0 +1,64 @@
+Input Notebook:  experiment_template.ipynb
+Output Notebook: papermill_outputs/notebooks/output-AutoARIMA-Medium_(Balanced).ipynb
+Executing:   0%|          | 0/6 [00:00<?, ?cell/s]Executing notebook with kernel: myenv310
+Executing Cell 1---------------------------------------
+Ending Cell 1------------------------------------------
+Executing:  17%|█▋        | 1/6 [00:00<00:04,  1.09cell/s]Executing Cell 2---------------------------------------
+Ending Cell 2------------------------------------------
+Executing Cell 3---------------------------------------
+Ending Cell 3------------------------------------------
+Executing:  50%|█████     | 3/6 [00:25<00:27,  9.23s/cell]Executing Cell 4---------------------------------------
+Ending Cell 4------------------------------------------
+Executing:  67%|██████▋   | 4/6 [00:41<00:23, 11.82s/cell]Executing Cell 5---------------------------------------
+
+============================================================
+🏁 JOB EXECUTION COMPLETE
+
+✅ Successfully saved 17 results to papermill_outputs/results/results-AutoARIMA-Medium_(Balanced).csv
+
+--- Metrics for this specific job ---
+
+          R²     SMAPE           MAE         Well     Method    Category  \
+0  -0.107391  0.720967   9114.425602         wind  AutoARIMA  Cumulative   
+1   0.775492  0.710062   2225.350467        solar  AutoARIMA  Cumulative   
+2   0.979123  0.096349  14836.378537         load  AutoARIMA  Cumulative   
+3   0.916794  0.190849  15280.460299    15/9-F-14  AutoARIMA  Cumulative   
+4   0.893866  0.272734  24273.539758    15/9-F-12  AutoARIMA  Cumulative   
+5   0.951229  0.188553   4717.246468    15/9-F-11  AutoARIMA  Cumulative   
+6  -1.517547  0.793681   3998.422001  15/9-F-15 D  AutoARIMA  Cumulative   
+7   0.999764  0.011064     97.859349       Prod-1  AutoARIMA  Cumulative   
+8   0.997138  0.039920    307.557042       Prod-2  AutoARIMA  Cumulative   
+9   0.999780  0.008952     71.919480       Prod-3  AutoARIMA  Cumulative   
+10  0.972543  0.117373   1059.976527       Prod-4  AutoARIMA  Cumulative   
+11  0.937233  0.174345   1586.921458       Prod-5  AutoARIMA  Cumulative   
+12  0.993144  0.059878    442.514923       Prod-6  AutoARIMA  Cumulative   
+13  0.999765  0.008848     77.279510       Prod-7  AutoARIMA  Cumulative   
+14  0.925745  0.193669   1359.755243       Prod-8  AutoARIMA  Cumulative   
+15  0.956354  0.145538   1164.979093       Prod-9  AutoARIMA  Cumulative   
+16  0.998123  0.030746    299.114078      Prod-10  AutoARIMA  Cumulative   
+
+              Setting  
+0   Medium (Balanced)  
+1   Medium (Balanced)  
+2   Medium (Balanced)  
+3   Medium (Balanced)  
+4   Medium (Balanced)  
+5   Medium (Balanced)  
+6   Medium (Balanced)  
+7   Medium (Balanced)  
+8   Medium (Balanced)  
+9   Medium (Balanced)  
+10  Medium (Balanced)  
+11  Medium (Balanced)  
+12  Medium (Balanced)  
+13  Medium (Balanced)  
+14  Medium (Balanced)  
+15  Medium (Balanced)  
+16  Medium (Balanced)  
+
+--- Notebook execution finished. ---
+
+Ending Cell 5------------------------------------------
+Executing Cell 6---------------------------------------
+Ending Cell 6------------------------------------------
+Executing: 100%|██████████| 6/6 [00:44<00:00,  7.38s/cell]

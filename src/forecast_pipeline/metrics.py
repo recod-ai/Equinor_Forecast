@@ -139,3 +139,86 @@ def clean_and_structure_results(
         'aggregated_quantiles': _process_dataframe(df_slice_agg, 'aggregated', True, filter_tags, remove_cols),
         'cumulative_quantiles': _process_dataframe(df_slice_cum, 'cumulative', True, filter_tags, remove_cols)
     }
+
+
+import json
+from pathlib import Path
+
+# In src/forecast_pipeline/analytics.py
+
+import pandas as pd
+import json
+import logging
+from pathlib import Path
+from typing import List, Dict, Any
+
+def collate_robust_results(run_output_dir: str | Path) -> pd.DataFrame:
+    """
+    Scans a run directory for all atomic JSON result files, aggregates them
+    into a single "leaderboard" DataFrame.
+
+    This function is the cornerstone of post-experiment analysis in the new pipeline.
+
+    Args:
+        run_output_dir: The path to the main timestamped directory for a specific run
+                        (e.g., 'experiments/2025-07-15_10-08-54_...').
+
+    Returns:
+        A pandas DataFrame containing a leaderboard of all successful experiments.
+        Returns an empty DataFrame if no successful results are found.
+    """
+    run_path = Path(run_output_dir)
+    results_dir = run_path / "results"
+    
+    if not results_dir.is_dir():
+        logging.warning(f"Results directory not found at the expected path: {results_dir}")
+        return pd.DataFrame()
+
+    all_results: List[Dict[str, Any]] = []
+    
+    json_files = list(results_dir.glob("*.json"))
+    logging.info(f"Found {len(json_files)} result files in {results_dir}. Processing...")
+
+    for json_file in json_files:
+        with open(json_file, 'r', encoding='utf-8') as f:
+            try:
+                data = json.load(f)
+            except json.JSONDecodeError:
+                logging.warning(f"Could not decode JSON from file: {json_file}. Skipping.")
+                continue
+        
+        # Only process results from successfully completed jobs
+        if data.get("status") != "success":
+            continue
+        
+        # --- Flatten the nested JSON into a single row for the DataFrame ---
+        # Start with the top-level identifying information
+        config_to_add = data.get("config", {})
+        flat_row = {
+            "experiment_id": data.get("experiment_id"),
+            "well": data.get("well"),
+            "job_hash": data.get("job_hash"),
+            "optuna_trial_number": config_to_add.get("optuna_trial_number"),
+        }
+        
+        # Add the easily accessible key metrics for sorting and quick analysis
+        flat_row.update(data.get("key_metrics", {}))
+        
+        # Add the full experiment configuration, excluding redundant or overly complex keys
+        config_to_add = data.get("config", {})
+        # We can exclude very large or nested items from the main leaderboard for clarity
+        excluded_keys = ["selected_features", "extractor_config", "fuser_config", "run_output_dir"]
+        for key, value in config_to_add.items():
+            if key not in excluded_keys and not isinstance(value, (dict, list)):
+                flat_row[key] = value
+
+        all_results.append(flat_row)
+            
+    if not all_results:
+        logging.warning("No successful jobs found to create a leaderboard.")
+        return pd.DataFrame()
+        
+    # Convert the list of dictionaries to a DataFrame
+    leaderboard_df = pd.DataFrame(all_results)
+    
+    return leaderboard_df

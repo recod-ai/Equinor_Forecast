@@ -2,6 +2,9 @@
 output_notebooks/
 Artigos/
 legacy/
+src/experiment_configs/profiles
+src/experiment_configs/results
+src/experiment_configs/studies
 .venv/
 darts_logs/
 .ipynb_checkpoints/

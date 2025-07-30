@@ -1,0 +1,64 @@
+Input Notebook:  experiment_template.ipynb
+Output Notebook: papermill_outputs/notebooks/output-LinearRegression-Large_and_Robust.ipynb
+Executing:   0%|          | 0/6 [00:00<?, ?cell/s]Executing notebook with kernel: myenv310
+Executing Cell 1---------------------------------------
+Ending Cell 1------------------------------------------
+Executing:  17%|█▋        | 1/6 [00:00<00:04,  1.05cell/s]Executing Cell 2---------------------------------------
+Ending Cell 2------------------------------------------
+Executing Cell 3---------------------------------------
+Ending Cell 3------------------------------------------
+Executing:  50%|█████     | 3/6 [00:23<00:25,  8.62s/cell]Executing Cell 4---------------------------------------
+Ending Cell 4------------------------------------------
+Executing:  67%|██████▋   | 4/6 [00:40<00:22, 11.36s/cell]Executing Cell 5---------------------------------------
+
+============================================================
+🏁 JOB EXECUTION COMPLETE
+
+✅ Successfully saved 17 results to papermill_outputs/results/results-LinearRegression-Large_and_Robust.csv
+
+--- Metrics for this specific job ---
+
+           R²      SMAPE           MAE         Well            Method  \
+0    0.913956   0.191700   2410.086064         wind  LinearRegression   
+1  -81.442590  13.215346  45456.091862        solar  LinearRegression   
+2    0.989757   0.063979   9869.903246         load  LinearRegression   
+3    0.667626   0.394823  31736.608297    15/9-F-14  LinearRegression   
+4    0.965083   0.141547  12633.650737    15/9-F-12  LinearRegression   
+5    0.995789   0.054341   1360.986291    15/9-F-11  LinearRegression   
+6    0.091822   0.471904   2398.484680  15/9-F-15 D  LinearRegression   
+7    0.999857   0.008418     74.393609       Prod-1  LinearRegression   
+8    0.999715   0.012004     92.547967       Prod-2  LinearRegression   
+9    0.999187   0.018712    150.299653       Prod-3  LinearRegression   
+10   0.998216   0.028683    259.460774       Prod-4  LinearRegression   
+11   0.998742   0.024448    222.791632       Prod-5  LinearRegression   
+12   0.998737   0.023340    172.857267       Prod-6  LinearRegression   
+13   0.994651   0.053551    467.184077       Prod-7  LinearRegression   
+14   0.998446   0.022559    159.084980       Prod-8  LinearRegression   
+15   0.999492   0.015805    126.560779       Prod-9  LinearRegression   
+16   0.994254   0.051517    501.924653      Prod-10  LinearRegression   
+
+      Category         Setting  
+0   Cumulative  Large & Robust  
+1   Cumulative  Large & Robust  
+2   Cumulative  Large & Robust  
+3   Cumulative  Large & Robust  
+4   Cumulative  Large & Robust  
+5   Cumulative  Large & Robust  
+6   Cumulative  Large & Robust  
+7   Cumulative  Large & Robust  
+8   Cumulative  Large & Robust  
+9   Cumulative  Large & Robust  
+10  Cumulative  Large & Robust  
+11  Cumulative  Large & Robust  
+12  Cumulative  Large & Robust  
+13  Cumulative  Large & Robust  
+14  Cumulative  Large & Robust  
+15  Cumulative  Large & Robust  
+16  Cumulative  Large & Robust  
+
+--- Notebook execution finished. ---
+
+Ending Cell 5------------------------------------------
+Executing Cell 6---------------------------------------
+Ending Cell 6------------------------------------------
+Executing: 100%|██████████| 6/6 [00:43<00:00,  7.22s/cell]

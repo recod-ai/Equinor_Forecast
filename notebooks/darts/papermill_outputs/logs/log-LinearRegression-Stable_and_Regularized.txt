@@ -1,0 +1,64 @@
+Input Notebook:  experiment_template.ipynb
+Output Notebook: papermill_outputs/notebooks/output-LinearRegression-Stable_and_Regularized.ipynb
+Executing:   0%|          | 0/6 [00:00<?, ?cell/s]Executing notebook with kernel: myenv310
+Executing Cell 1---------------------------------------
+Ending Cell 1------------------------------------------
+Executing:  17%|█▋        | 1/6 [00:00<00:04,  1.04cell/s]Executing Cell 2---------------------------------------
+Ending Cell 2------------------------------------------
+Executing Cell 3---------------------------------------
+Ending Cell 3------------------------------------------
+Executing:  50%|█████     | 3/6 [00:22<00:25,  8.35s/cell]Executing Cell 4---------------------------------------
+Ending Cell 4------------------------------------------
+Executing:  67%|██████▋   | 4/6 [00:38<00:21, 10.72s/cell]Executing Cell 5---------------------------------------
+
+============================================================
+🏁 JOB EXECUTION COMPLETE
+
+✅ Successfully saved 17 results to papermill_outputs/results/results-LinearRegression-Stable_and_Regularized.csv
+
+--- Metrics for this specific job ---
+
+           R²     SMAPE           MAE         Well            Method  \
+0    0.973005  0.103468   1299.256267         wind  LinearRegression   
+1  -22.788406  7.490369  24693.738550        solar  LinearRegression   
+2    0.983799  0.083063  12810.348921         load  LinearRegression   
+3    0.752269  0.340083  27319.884554    15/9-F-14  LinearRegression   
+4    0.870195  0.280989  25042.289715    15/9-F-12  LinearRegression   
+5    0.921952  0.229734   5750.619247    15/9-F-11  LinearRegression   
+6    0.502504  0.349244   1773.560045  15/9-F-15 D  LinearRegression   
+7    0.999832  0.009196     81.301425       Prod-1  LinearRegression   
+8    0.999495  0.016349    126.014822       Prod-2  LinearRegression   
+9    0.999479  0.014561    116.988090       Prod-3  LinearRegression   
+10   0.998442  0.026568    240.358778       Prod-4  LinearRegression   
+11   0.998860  0.023301    212.335820       Prod-5  LinearRegression   
+12   0.999882  0.004956     36.835102       Prod-6  LinearRegression   
+13   0.993199  0.060021    523.746834       Prod-7  LinearRegression   
+14   0.999302  0.016027    112.816714       Prod-8  LinearRegression   
+15   0.998885  0.022120    177.353312       Prod-9  LinearRegression   
+16   0.995600  0.045029    438.698358      Prod-10  LinearRegression   
+
+      Category               Setting  
+0   Cumulative  Stable & Regularized  
+1   Cumulative  Stable & Regularized  
+2   Cumulative  Stable & Regularized  
+3   Cumulative  Stable & Regularized  
+4   Cumulative  Stable & Regularized  
+5   Cumulative  Stable & Regularized  
+6   Cumulative  Stable & Regularized  
+7   Cumulative  Stable & Regularized  
+8   Cumulative  Stable & Regularized  
+9   Cumulative  Stable & Regularized  
+10  Cumulative  Stable & Regularized  
+11  Cumulative  Stable & Regularized  
+12  Cumulative  Stable & Regularized  
+13  Cumulative  Stable & Regularized  
+14  Cumulative  Stable & Regularized  
+15  Cumulative  Stable & Regularized  
+16  Cumulative  Stable & Regularized  
+
+--- Notebook execution finished. ---
+
+Ending Cell 5------------------------------------------
+Executing Cell 6---------------------------------------
+Ending Cell 6------------------------------------------
+Executing: 100%|██████████| 6/6 [00:41<00:00,  6.88s/cell]

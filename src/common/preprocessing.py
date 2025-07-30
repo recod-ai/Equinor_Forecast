@@ -43,6 +43,7 @@ def split_train_validation(series: TimeSeries, covariates: TimeSeries, validatio
     train_cov, val_cov = covariates.split_after(validation_ratio)
     return train_series, val_series, train_cov, val_cov
 
+import gc
 
 def run_sliding_window_forecasting(
     full_series: TimeSeries,
@@ -53,11 +54,10 @@ def run_sliding_window_forecasting(
     stride: int,
     model_type: str,
 ) -> tuple:
-    """Run sliding window forecasting on the full TimeSeries."""
+    """Run sliding window forecasting on the full TimeSeries, liberando memória em cada janela."""
     forecast_segments = []
     iteration = 1
 
-    # Slide the window over the series
     for window_start in range(initial_train_size, len(full_series) - forecast_horizon, stride):
         window_end = window_start + forecast_horizon
 
@@ -65,7 +65,6 @@ def run_sliding_window_forecasting(
         train_series = full_series[iteration:window_start]
         test_series = full_series[window_start:window_end]
         cov_train = full_covariates[:window_start]
-        # cov_test is available if needed: cov_test = full_covariates[window_start:window_end]
 
         # Split training data into train/validation sets
         train, val, train_cov, val_cov = split_train_validation(train_series, cov_train, validation_ratio)
@@ -80,7 +79,7 @@ def run_sliding_window_forecasting(
             print(f"  Test: Days {window_start} to {window_end} (Horizon: {forecast_horizon} days)")
             print(f"  Split: {train_days} train, {val_days} validation days")
 
-        # Train the model
+        # --- Treinamento ---
         model = train_deep_encoder_model(
             train_series=train,
             train_covariates=train_cov,
@@ -90,19 +89,26 @@ def run_sliding_window_forecasting(
             output_chunk_length=forecast_horizon,
         )
 
-        # Forecast and align with test series
-        forecast = model.predict(n=forecast_horizon, series=train_series, verbose=False, n_jobs=16)
+        # --- Previsão ---
+        forecast = model.predict(n=forecast_horizon, series=train_series, verbose=False, n_jobs=1)
         forecast_aligned = forecast.slice_intersect(test_series)
 
-        # Store full forecast for first window; otherwise, only the last 'stride' points
+        # Salva só o necessário
         if window_start == initial_train_size:
             forecast_segments.append(forecast_aligned)
         else:
             forecast_segments.append(forecast_aligned[-stride:])
 
+        # --- Libera objetos grandes logo após uso ---
+        del model
+        del train_series, test_series, cov_train
+        del train, val, train_cov, val_cov
+        del forecast, forecast_aligned
+        gc.collect()  # Força coleta de lixo imediatamente
+
         iteration += stride
 
-    # Concatenate forecast segments and align with test series
+    # Concatenar os resultados finais
     if forecast_segments:
         full_forecast = concatenate(forecast_segments, ignore_time_axis=True)
         alignment_start = initial_train_size
@@ -113,7 +119,12 @@ def run_sliding_window_forecasting(
         full_forecast = TimeSeries()
         aligned_test_series = TimeSeries()
 
+    # Opcional: libera lista temporária de forecasts do loop
+    del forecast_segments
+    gc.collect()
+
     return full_forecast, aligned_test_series
+
 
 
 def process_well(
@@ -210,128 +221,27 @@ from evaluation.evaluation import evaluate_and_plot_results
 
 
 
-def process_deep_encoder_well(
-    well: str,
-    data_source: dict,
-    preloaded_data: pd.DataFrame,
-    train_size: int,
-    forecast_horizon: int,
-    lag_window: int,
-    sampling_rate: int,
-    metrics_accumulator: list,
-    model_types: List[str]
-) -> None:
-    """
-    Processa um único poço: prepara as séries, treina os modelos especificados em
-    model_types e avalia as previsões.
-    """
-    # Cópia dos dados para evitar efeitos colaterais
-    df = preloaded_data.copy()
-
-    # Aplica o mapeamento de variáveis, se definido
-    variable_mapping = data_source.get('variable_mapping')
-    if variable_mapping:
-        df = df.rename(columns=variable_mapping)
-
-    # Remove linhas com valores ausentes e seleciona as features relevantes
-    features = data_source['features']
-    df = df.dropna()[features]
-
-    target_column = data_source['target_column']
-    covariate_columns = [col for col in features if col != target_column]
-
-    # Prepara as séries temporais (treinamento, teste e covariáveis completas)
-    train_series, test_series, full_covariates = prepare_time_series(
-        dataframe=df,
-        target=target_column,
-        covariates=covariate_columns,
-        train_size=train_size,
-        horizon=forecast_horizon
-    )
-
-    # Divide a série de treinamento para obtenção de validação
-    train, val = train_series.split_after(0.6)
-    train_covariates = full_covariates[:train_size].split_after(0.6)[0]
-    val_covariates = full_covariates[:train_size].split_after(0.6)[1]
-
-    print(f"\nPoço: {well}")
-    print(f"Comprimento da série de treinamento: {len(train)}")
-    print(f"Comprimento da série de validação: {len(val)}")
-
-    # Usa os modelos definidos pelo usuário em model_types
-    models = {}
-    for model_type in model_types:
-        print(f"Treinando modelo: {model_type} para o poço: {well}")
-        model = train_deep_encoder_model(
-            train_series=train,
-            train_covariates=train_covariates,
-            val_series=val,
-            val_covariates=val_covariates,
-            model_type=model_type,
-            output_chunk_length=forecast_horizon
-        )
-        models[model_type] = model
-
-    for model_type, model in models.items():
-        print(f"Realizando previsão com o modelo: {model_type} para o poço: {well}")
-        full_forecast = iterative_forecast_deep_encoder(
-            model=model,
-            train_series=train_series,
-            test_series=test_series,
-            full_covariates=full_covariates,
-            input_chunk_length=lag_window,
-            output_chunk_length=forecast_horizon
-        )
-
-        # Calcula a soma cumulativa da série de treinamento (exceto o último ponto)
-        train_cum_sum = pd.Series(train_series.values().flatten()).cumsum()[:-1].iloc[-1]
-
-
-        # Extrai os valores das séries para plotagem (flatten e conversão para lista)
-        test_series_plot = [test_series.values().flatten().tolist()]
-        full_forecast_plot = [full_forecast.values().flatten().tolist()]
-
-        evaluate_and_plot_results(
-            test_series=test_series_plot,
-            forecast_series=full_forecast_plot,
-            dataset=data_source['name'],
-            well_name=well,
-            lag_window=lag_window,
-            horizon=forecast_horizon,
-            train_cumulative_sum=train_cum_sum,
-            sampling_rate=sampling_rate,
-            metrics_accumulator=metrics_accumulator,
-            method=model_type
-        )
-
-
-from typing import List
+from typing import List, Union, Dict
 import pandas as pd
-from joblib import Parallel, delayed            # ⬅ opcional, ver abaixo
-
 from functools import reduce
 from darts import TimeSeries
+from joblib import Parallel, delayed  # Optional: for parallelism
 
 try:
-    # disponíveis a partir do Darts ≥ 0.25
+    # Available in Darts ≥ 0.25
     from darts.utils.utils import concatenate  # type: ignore
 except ImportError:
-    # ---- compatibilidade para versões antigas -----------------------------
+    # Compatibility for older versions
     def concatenate(series_seq):
         """
-        Concatena uma sequência de TimeSeries no eixo temporal.
-        Equivalente ao utils.concatenate() das versões novas.
+        Concatenates a sequence of TimeSeries along the time axis.
+        Equivalent to utils.concatenate() from newer versions.
         """
-        # garante lista/tupla
         series_seq = list(series_seq)
         if not series_seq:
-            raise ValueError("A sequência de séries está vazia.")
-
-        # faz append em cadeia (tudo é imutável, portanto seguro)
+            raise ValueError("The sequence of series is empty.")
         return reduce(lambda a, b: a.append(b), series_seq)
 
-
-# ---- helper 10-30× mais rápido que o loop manual ---------------------------
 def fast_iterative_forecast(
     model,
     train_series: TimeSeries,
@@ -341,12 +251,12 @@ def fast_iterative_forecast(
     output_chunk_length: int,
 ) -> TimeSeries:
     """
-    1ª iteração → horizonte completo
-    Demais      → só o último ponto
+    First iteration → full forecast horizon.
+    Others         → only the last point.
     """
     series_total = train_series.append(test_series)
 
-    # 1) gera TODAS as previsões (horizonte completo)
+    # 1) Generate ALL forecasts (full horizon)
     forecasts = model.historical_forecasts(
         series=series_total,
         # past_covariates=full_covariates,
@@ -354,18 +264,19 @@ def fast_iterative_forecast(
         forecast_horizon=output_chunk_length,
         stride=1,
         retrain=False,
-        last_points_only=False,          # devolve o horizonte inteiro
+        last_points_only=False,  # Returns the full horizon
         verbose=False,
     )
 
-    # 2) guarda o 1º horizonte completo e só o último ponto dos demais
+
+    # 2) Keep the 1st full horizon and only the last point for the others
     combined = [forecasts[0]] + [fc[-1:] for fc in forecasts[1:]]
 
     return concatenate(combined).slice_intersect(test_series)
 
 
-# ---- função solicitada -----------------------------------------------------
-
+from config import HYPERPARAM_DESCRIPTIONS
+import gc
 def process_deep_encoder_well(
     well: str,
     data_source: dict,
@@ -375,100 +286,81 @@ def process_deep_encoder_well(
     lag_window: int,
     sampling_rate: int,
     metrics_accumulator: list,
-    model_types: List[str],
+    model_type: str,          # <-- CHANGED: Now a single model string
+    model_config_size: str,   # <-- NEW: The configuration profile to use
 ) -> None:
     """
-    Prepara as séries, treina os modelos em `model_types` e avalia previsões
-    para um único poço — agora muito mais rápido.
+    Processes a single well for a SINGLE model and a SINGLE configuration.
+    This is the core function called by the papermill notebook.
     """
+    # 1. Select the hyperparameters for this specific run
+    if model_type not in HYPERPARAM_DESCRIPTIONS or model_config_size not in HYPERPARAM_DESCRIPTIONS[model_type]:
+        print(f"Skipping {model_type} with config {model_config_size}: Not defined in config.py")
+        return
+        
+    hyperparams = HYPERPARAM_DESCRIPTIONS[model_type][model_config_size]
 
-    # ---------- 1. preparação dos dados -------------------------------------
-    df = preloaded_data.copy()                               # evita side-effects
-
-    variable_mapping = data_source.get("variable_mapping")
-    if variable_mapping:
-        df = df.rename(columns=variable_mapping)
-
-    features = data_source["features"]
+    # 2. Data preparation (your existing logic)
+    df = preloaded_data.copy()
+    if data_source.get("variable_mapping"):
+        df = df.rename(columns=data_source["variable_mapping"])
+    features = [f for f in data_source["features"] if f in df.columns]
     df = df.dropna()[features]
-
     target_column = data_source["target_column"]
     covariate_columns = [c for c in features if c != target_column]
-
     train_series, test_series, full_covariates = prepare_time_series(
-        dataframe=df,
-        target=target_column,
-        covariates=covariate_columns,
-        train_size=train_size,
-        horizon=forecast_horizon,
+        dataframe=df, target=target_column, covariates=covariate_columns,
+        train_size=train_size, horizon=forecast_horizon
     )
 
-    print('covariate_columns', covariate_columns)
-
+    # debug_sample_count = 10
+    # if debug_sample_count is not None and debug_sample_count > 0:
+    #     print(f"  [DEBUG MODE] Truncating test series to {debug_sample_count} samples.")
+    #     test_series = test_series[:debug_sample_count]
+    
     train, val = train_series.split_after(0.6)
-    train_cov, val_cov = (
-        full_covariates[:train_size].split_after(0.6)[0],
-        full_covariates[:train_size].split_after(0.6)[1],
+    train_cov, val_cov = (full_covariates[:train_size].split_after(0.6)[0], full_covariates[:train_size].split_after(0.6)[1])
+
+    print(f"\nWell: {well} | Model: {model_type} | Config: {model_config_size}")
+    print(f"  > Hyperparameters: {hyperparams}")
+    print(f"Training series length: {len(train)}")
+    print(f"Validation series length: {len(val)}")
+
+    # 3. Train the single specified model with the selected config
+    model = train_deep_encoder_model(
+        train_series=train,
+        train_covariates=train_cov,
+        val_series=val,
+        val_covariates=val_cov,
+        model_type=model_type,
+        output_chunk_length=forecast_horizon,
+        hyperparam_config=hyperparams, # <-- Pass the selected hyperparams
     )
 
-    print(f"\nPoço: {well}")
-    print(f"Comprimento da série de treinamento: {len(train)}")
-    print(f"Comprimento da série de validação: {len(val)}")
+    # 4. Fast forecast and evaluation (your existing logic)
+    print(f"  > Forecasting with model: {model_type} for well: {well}")
+    full_forecast = fast_iterative_forecast(
+        model=model, train_series=train_series, test_series=test_series,
+        full_covariates=full_covariates, input_chunk_length=lag_window,
+        output_chunk_length=forecast_horizon
+    )
+    train_cum_sum = pd.Series(train_series.values().flatten()).cumsum()[:-1].iloc[-1]
+    test_vals = [test_series.values().flatten().tolist()]
+    pred_vals = [full_forecast.values().flatten().tolist()]
 
-    # ---------- 2. treina todos os modelos ----------------------------------
-    def _train_one(model_type):
-        print(f"Treinando modelo: {model_type} para o poço: {well}")
-        return model_type, train_deep_encoder_model(
-            train_series=train,
-            train_covariates=train_cov,
-            val_series=val,
-            val_covariates=val_cov,
-            model_type=model_type,
-            output_chunk_length=forecast_horizon,
-        )
+    # IMPORTANT: Pass the config size to your evaluation function
+    evaluate_and_plot_results(
+        test_series=test_vals, forecast_series=pred_vals,
+        dataset=data_source["name"], well_name=well,
+        lag_window=lag_window, horizon=forecast_horizon,
+        train_cumulative_sum=train_cum_sum, sampling_rate=sampling_rate,
+        metrics_accumulator=metrics_accumulator,
+        method=model_type,
+        model_config_size=model_config_size, # <-- Pass the new parameter
+    )
 
-    # → paralelize o treino se quiser; com poucos modelos o overhead é inútil
-    models = dict(_train_one(mt) for mt in model_types)
-    # Para paralelizar, descomente:
-    # models = dict(Parallel(n_jobs=-1)(delayed(_train_one)(mt) for mt in model_types))
-
-    # ---------- 3. previsões rápidas e avaliação ----------------------------
-    for model_type, model in models.items():
-        print(f"Realizando previsão com o modelo: {model_type} para o poço: {well}")
-        full_forecast = fast_iterative_forecast(
-            model=model,
-            train_series=train_series,
-            test_series=test_series,
-            full_covariates=full_covariates,
-            input_chunk_length=lag_window,
-            output_chunk_length=forecast_horizon,
-        )
-
-        # soma cumulativa do treino (exclui o último ponto)
-        train_cum_sum = (
-            pd.Series(train_series.values().flatten()).cumsum()[:-1].iloc[-1]
-        )
-
-        # flattens → listas para seu plotter
-        test_vals = [test_series.values().flatten().tolist()]
-        pred_vals = [full_forecast.values().flatten().tolist()]
-
-        evaluate_and_plot_results(
-            test_series=test_vals,
-            forecast_series=pred_vals,
-            dataset=data_source["name"],
-            well_name=well,
-            lag_window=lag_window,
-            horizon=forecast_horizon,
-            train_cumulative_sum=train_cum_sum,
-            sampling_rate=sampling_rate,
-            metrics_accumulator=metrics_accumulator,
-            method=model_type,
-        )
-
-        if metrics_accumulator and "Poço" not in metrics_accumulator[-1]:
-            metrics_accumulator[-1]["Poço"] = well
-            metrics_accumulator[-1]["Método"] = model_type
+    del model
+    gc.collect()
 
 
 def process_deep_encoder_data_source(
@@ -479,43 +371,26 @@ def process_deep_encoder_data_source(
     sampling_rate: int,
     metrics_accumulator: list,
     preloaded_data: Union[pd.DataFrame, Dict[str, pd.DataFrame]],
-    model_types: list
+    model_type: str,            
+    model_config_size: str,   
 ) -> None:
     """
-    Processa todos os poços de uma fonte de dados usando os dados pré-carregados,
-    propagando a seleção de modelos definida em model_types.
+    Processes all wells from a data source for a SINGLE model and configuration.
     """
-    print(f"\nProcessando fonte de dados: {data_source['name']}")
+    print(f"\nProcessing data source: {data_source['name']} for {model_type} ({model_config_size})")
     wells = data_source['wells']
-
-    if isinstance(preloaded_data, dict):
-        # Para cada poço, utiliza os dados correspondentes
-        for well in wells:
-            df = preloaded_data.get(well)
-            if df is not None:
-                process_deep_encoder_well(
-                    well=well,
-                    data_source=data_source,
-                    preloaded_data=df,
-                    train_size=train_size,
-                    forecast_horizon=forecast_horizon,
-                    lag_window=lag_window,
-                    sampling_rate=sampling_rate,
-                    metrics_accumulator=metrics_accumulator,
-                    model_types=model_types
-                )
-            else:
-                print(f"Warning: Dados não disponíveis para o poço '{well}'.")
-    else:
-        # Se houver apenas um DataFrame (ex.: único poço)
-        process_deep_encoder_well(
-            well=wells[0],
-            data_source=data_source,
-            preloaded_data=preloaded_data,
-            train_size=train_size,
-            forecast_horizon=forecast_horizon,
-            lag_window=lag_window,
-            sampling_rate=sampling_rate,
-            metrics_accumulator=metrics_accumulator,
-            model_types=model_types
-        )
+    
+    # This loop remains, as a single job might still process multiple wells for the same model/config
+    for well in wells:
+        well_data = preloaded_data.get(well) if isinstance(preloaded_data, dict) else preloaded_data
+        if well_data is not None:
+            process_deep_encoder_well(
+                well=well, data_source=data_source, preloaded_data=well_data,
+                train_size=train_size, forecast_horizon=forecast_horizon,
+                lag_window=lag_window, sampling_rate=sampling_rate,
+                metrics_accumulator=metrics_accumulator,
+                model_type=model_type,
+                model_config_size=model_config_size,
+            )
+        else:
+            print(f"Warning: Data for well '{well}' not found in preloaded_data.")

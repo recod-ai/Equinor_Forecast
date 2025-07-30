@@ -319,184 +319,224 @@ def create_internal_validation_set_from_disk(
 
     return X_train_fit, y_train_fit, X_val_internal, y_val_internal
 
-import numpy as np
-import pandas as pd
-from typing import Optional, Dict, List, Any
 
+# def augment_with_synthetic_samples(
+#     X_train: np.ndarray,
+#     y_train: np.ndarray,
+#     scales: List[float] = [1.5, 2, 3, 5, 7, 9, 11, 13, 15, 17],
+#     data_sample: float = 0.9,
+#     random_state: int = 42,
+#     save_metadata_path: Optional[str] = "Meta_validation"  # Parâmetro opcional para salvar metadados
+# ) -> Tuple[np.ndarray, np.ndarray]:
+#     """
+#     Aumenta os dados com versões escaladas, preservando a ordem cronológica,
+#     e opcionalmente salva os metadados dos blocos em disco.
 
-def inspect_array_integrity(
-    arr: np.ndarray, name: str
-) -> Dict[str, Any]:
-    """
-    Inspects a numpy array for NaNs and Infs, returning counts and percentages.
+#     Args:
+#         X_train: Dados de treino originais (ordenados cronologicamente).
+#         y_train: Rótulos de treino originais.
+#         scales: Lista de fatores de escala para gerar dados sintéticos.
+#         data_sample: Fração de amostras a serem selecionadas de cada bloco.
+#         random_state: Semente para reprodutibilidade.
+#         save_metadata_path: Se fornecido, salva os índices de fim de bloco neste caminho.
 
-    Args:
-        arr: numpy array to inspect.
-        name: label for the array.
-
-    Returns:
-        A dict with keys: name, total_elements, nan_count, nan_pct, posinf_count,
-        neginf_count, inf_count, inf_pct.
-    """
-    total = arr.size
-    nan_count = int(np.isnan(arr).sum())
-    posinf_count = int(np.isposinf(arr).sum())
-    neginf_count = int(np.isneginf(arr).sum())
-    inf_count = posinf_count + neginf_count
-    return {
-        'dataset': name,
-        'total_elements': total,
-        'nan_count': nan_count,
-        'nan_pct': nan_count / total * 100,
-        'posinf_count': posinf_count,
-        'neginf_count': neginf_count,
-        'inf_count': inf_count,
-        'inf_pct': inf_count / total * 100
-    }
-
-
-def create_integrity_report(
-    X_before: np.ndarray,
-    y_before: np.ndarray,
-    X_after: np.ndarray,
-    y_after: np.ndarray,
-    metadata: Optional[Dict[str, List[int]]] = None,
-    display: bool = True
-) -> pd.DataFrame:
-    """
-    Gera um relatório de integridade dos dados antes e depois da data augmentation,
-    identificando NaNs e Infs, e opcionalmente detalhando por blocos com metadados.
-
-    Args:
-        X_before: dados originais (X)
-        y_before: rótulos originais (y)
-        X_after: dados aumentados (X)
-        y_after: rótulos aumentados (y)
-        metadata: dicionário com 'end_indices' listando os limites cumulativos de cada bloco
-        display: se True, imprime o DataFrame estilizado no notebook.
-
-    Returns:
-        DataFrame com relatório agregado (e por bloco, se metadata informado).
-    """
-    reports = []
-    # global before/after
-    reports.append(inspect_array_integrity(X_before, 'X_before'))
-    reports.append(inspect_array_integrity(y_before, 'y_before'))
-    reports.append(inspect_array_integrity(X_after, 'X_after'))
-    reports.append(inspect_array_integrity(y_after, 'y_after'))
-
-    df = pd.DataFrame(reports)
-
-    # se tiver metadados, detalhar por bloco
-    if metadata and 'end_indices' in metadata:
-        ends = metadata['end_indices']
-        starts = [0] + ends[:-1]
-        for i, (s, e) in enumerate(zip(starts, ends)):
-            X_block = X_after[s:e]
-            y_block = y_after[s:e]
-            reports_block = inspect_array_integrity(X_block, f'X_block_{i}')
-            reports_block.update({'block': i})
-            reports.append(reports_block)
-            reports_block = inspect_array_integrity(y_block, f'y_block_{i}')
-            reports_block.update({'block': i})
-            reports.append(reports_block)
-        df = pd.DataFrame(reports)
+#     Returns:
+#         Um novo conjunto de treino e rótulos aumentados.
+#     """
     
-    # organizar colunas
-    cols = ['dataset', 'block', 'total_elements', 'nan_count', 'nan_pct',
-            'posinf_count', 'neginf_count', 'inf_count', 'inf_pct']
-    for c in cols:
-        if c not in df.columns:
-            df[c] = np.nan
-    df = df[cols]
+#     rng = np.random.RandomState(random_state)
 
-    if display:
-        try:
-            from IPython.display import display as _disp
-            _disp(df.style.format({
-                'nan_pct': '{:.2f}%',
-                'inf_pct': '{:.2f}%'
-            }))
-        except ImportError:
-            print(df)
-    return df
+#     # Coleta as partes dos dados aumentados
+#     X_augmented_list = [X_train]
+#     y_augmented_list = [y_train]
+
+#     num_original_samples = X_train.shape[0]
+
+#     for scale in scales:
+#         # Gera o bloco sintético completo
+#         X_scaled = X_train / scale
+#         y_scaled = y_train / scale
+
+#         # Determina quantos índices selecionar
+#         num_to_sample = int(num_original_samples * data_sample)
+#         if num_to_sample == 0:
+#             continue # Pula se a fração for muito pequena e resultar em 0 amostras
+
+#         # 1. Seleciona `k` índices aleatórios do bloco sintético.
+#         chosen_indices = rng.choice(num_original_samples, size=num_to_sample, replace=False)
+
+#         # 2. ORDENA os índices selecionados para preservar a ordem cronológica.
+#         sorted_indices = np.sort(chosen_indices)
+
+#         # 3. Usa os índices ordenados para criar a subamostra.
+#         X_sub_ordered = X_scaled[sorted_indices]
+#         y_sub_ordered = y_scaled[sorted_indices]
+
+#         X_augmented_list.append(X_sub_ordered)
+#         y_augmented_list.append(y_sub_ordered)
+        
+#     # --- Lógica de Metadados ---
+#     # É executada mesmo se não for salvar, pois é leve.
+#     block_sizes = [len(part) for part in X_augmented_list]
+#     end_indices = np.cumsum(block_sizes).tolist()
+    
+#     # Salva os metadados se um caminho for fornecido
+#     if save_metadata_path:
+#         metadata = {"end_indices": end_indices}
+#         try:
+#             with open(save_metadata_path, 'wb') as f:
+#                 pickle.dump(metadata, f)
+#         except IOError as e:
+#             print(f"Erro ao salvar metadados em {save_metadata_path}: {e}")
+
+#     # --- Concatenação Final ---
+#     X_final = np.concatenate(X_augmented_list, axis=0)
+#     y_final = np.concatenate(y_augmented_list, axis=0)
 
 
+#     return X_final, y_final
+
+
+import numpy as np
+import pickle
+from typing import List, Tuple, Optional, Dict, Any
 
 def augment_with_synthetic_samples(
     X_train: np.ndarray,
     y_train: np.ndarray,
-    scales: List[float] = [1.5, 2, 3, 5, 7, 9, 11, 13, 15, 17, 19],
-    sample_frac_per_scale: float = 0.95,
+    # --- Parâmetros de Controle Geral ---
+    data_sample: float = 0.9,
     random_state: int = 42,
-    save_metadata_path: Optional[str] = "Meta_validation"  # Parâmetro opcional para salvar metadados
+    # --- Novos Parâmetros para Estratégias Avançadas ---
+    augmentation_modes: List[str] = ['scale'],
+    original_replication_factor: int = 1,
+    # --- Parâmetros Específicos do Modo 'scale' ---
+    scales: List[float] = [1.5, 2, 3, 5, 7, 9, 11, 13, 15, 17],
+    # --- Parâmetros Específicos do Modo 'shift' ---
+    shift_std_fraction: float = 0.1,
+    num_shift_blocks: int = 5,  # Quantos blocos diferentes de 'shift' gerar
+    # --- Parâmetros Específicos do Modo 'mixup' ---
+    mixup_alpha: float = 0.2,
+    num_mixup_blocks: int = 5, # Quantos blocos diferentes de 'mixup' gerar
+    # --- Parâmetro de Metadados ---
+    save_metadata_path: Optional[str] = "Meta_validation"
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Aumenta os dados com versões escaladas, preservando a ordem cronológica,
-    e opcionalmente salva os metadados dos blocos em disco.
+    Augments training data using a variety of strategies for Seq2Seq models.
+
+    This function generates synthetic data by scaling, shifting, or mixing up
+    entire sequences, preserving the internal chronological structure of features
+    and the overall chronological order of samples. It also allows replicating
+    the original data to give it more weight.
 
     Args:
-        X_train: Dados de treino originais (ordenados cronologicamente).
-        y_train: Rótulos de treino originais.
-        scales: Lista de fatores de escala para gerar dados sintéticos.
-        sample_frac_per_scale: Fração de amostras a serem selecionadas de cada bloco.
-        random_state: Semente para reprodutibilidade.
-        save_metadata_path: Se fornecido, salva os índices de fim de bloco neste caminho.
+        X_train: Original, chronologically ordered training sequences (samples, timesteps, features).
+        y_train: Original training target sequences (samples, output_steps).
+        data_sample: Fraction of samples to select from each synthetic block.
+        random_state: Seed for reproducibility.
+        augmentation_modes: List of modes to use. Options: ['scale', 'shift', 'mixup'].
+        original_replication_factor: How many times to repeat the original data.
+        scales: List of scaling factors for the 'scale' mode.
+        shift_std_fraction: For 'shift' mode, the std dev of the random shift is a
+                            fraction of the original data's target variable std dev.
+        num_shift_blocks: Number of different shifted datasets to generate.
+        mixup_alpha: Alpha parameter for the 'mixup' mode interpolation.
+        num_mixup_blocks: Number of different mixed-up datasets to generate.
+        save_metadata_path: If provided, saves block metadata to this path.
 
     Returns:
-        Um novo conjunto de treino e rótulos aumentados.
+        A tuple containing the new augmented training set and labels.
     """
-    
+    if not isinstance(X_train, np.ndarray) or not isinstance(y_train, np.ndarray):
+        raise TypeError("X_train and y_train must be numpy arrays.")
+
     rng = np.random.RandomState(random_state)
 
-    # Coleta as partes dos dados aumentados
-    X_augmented_list = [X_train]
-    y_augmented_list = [y_train]
+    # 1. Replicate Original Data (Implicit Weighting)
+    if original_replication_factor < 1:
+        raise ValueError("original_replication_factor must be at least 1.")
+    X_augmented_list = [X_train] * original_replication_factor
+    y_augmented_list = [y_train] * original_replication_factor
 
     num_original_samples = X_train.shape[0]
 
-    for scale in scales:
-        # Gera o bloco sintético completo
-        X_scaled = X_train / scale
-        y_scaled = y_train / scale
+    for mode in augmentation_modes:
+        if num_original_samples == 0: continue
 
-        # Determina quantos índices selecionar
-        num_to_sample = int(num_original_samples * sample_frac_per_scale)
-        if num_to_sample == 0:
-            continue # Pula se a fração for muito pequena e resultar em 0 amostras
+        # Determine how many synthetic samples to generate per block
+        num_to_sample = int(num_original_samples * data_sample)
+        if num_to_sample == 0: continue
 
-        # 1. Seleciona `k` índices aleatórios do bloco sintético.
-        chosen_indices = rng.choice(num_original_samples, size=num_to_sample, replace=False)
+        if mode == 'scale':
+            for scale_factor in scales:
+                # This transformation is consistent across all features and time steps
+                X_synth_base = X_train / scale_factor
+                y_synth_base = y_train / scale_factor
 
-        # 2. ORDENA os índices selecionados para preservar a ordem cronológica.
-        sorted_indices = np.sort(chosen_indices)
+                # Sub-sample chronologically
+                chosen_indices = rng.choice(num_original_samples, size=num_to_sample, replace=False)
+                sorted_indices = np.sort(chosen_indices)
+                X_augmented_list.append(X_synth_base[sorted_indices])
+                y_augmented_list.append(y_synth_base[sorted_indices])
 
-        # 3. Usa os índices ordenados para criar a subamostra.
-        X_sub_ordered = X_scaled[sorted_indices]
-        y_sub_ordered = y_scaled[sorted_indices]
+        elif mode == 'shift':
+            # Calculate a realistic shift based on the data's own variance.
+            # Use the std dev of the target variable from the *original* unscaled data.
+            target_std = y_train.std()
+            shift_std = target_std * shift_std_fraction
+            
+            for _ in range(num_shift_blocks):
+                # For each block, draw a single shift value.
+                # This simulates a consistent sensor drift or change in baseline.
+                shift_amount = rng.normal(loc=0, scale=shift_std)
+                
+                # Apply the same shift to all values in X and y.
+                # This is physically consistent, assuming all features are related.
+                X_synth_base = X_train + shift_amount
+                y_synth_base = y_train + shift_amount
+                
+                # Sub-sample chronologically
+                chosen_indices = rng.choice(num_original_samples, size=num_to_sample, replace=False)
+                sorted_indices = np.sort(chosen_indices)
+                X_augmented_list.append(X_synth_base[sorted_indices])
+                y_augmented_list.append(y_synth_base[sorted_indices])
 
-        X_augmented_list.append(X_sub_ordered)
-        y_augmented_list.append(y_sub_ordered)
-        
-    # --- Lógica de Metadados ---
-    # É executada mesmo se não for salvar, pois é leve.
-    block_sizes = [len(part) for part in X_augmented_list]
-    end_indices = np.cumsum(block_sizes).tolist()
-    
-    # Salva os metadados se um caminho for fornecido
+        elif mode == 'mixup':
+            for _ in range(num_mixup_blocks):
+                # To preserve chronology, we mix a sample with a randomly chosen *other* sample.
+                # This creates a "virtual" well with characteristics blended from two real ones.
+                mix_indices = rng.choice(num_original_samples, size=num_original_samples, replace=True)
+                
+                # The mixup is applied at the sample level, preserving internal sequence structure.
+                X_synth_base = mixup_alpha * X_train + (1 - mixup_alpha) * X_train[mix_indices]
+                y_synth_base = mixup_alpha * y_train + (1 - mixup_alpha) * y_train[mix_indices]
+
+                # Sub-sample chronologically
+                chosen_indices = rng.choice(num_original_samples, size=num_to_sample, replace=False)
+                sorted_indices = np.sort(chosen_indices)
+                X_augmented_list.append(X_synth_base[sorted_indices])
+                y_augmented_list.append(y_synth_base[sorted_indices])
+
+        else:
+            print(f"Warning: Augmentation mode '{mode}' is not recognized. Skipping.")
+
+    # --- Metadata Logic ---
     if save_metadata_path:
-        metadata = {"end_indices": end_indices}
+        block_sizes = [len(part) for part in X_augmented_list]
+        end_indices = np.cumsum(block_sizes).tolist()
+        metadata = {"end_indices": end_indices, "modes_used": augmentation_modes}
         try:
             with open(save_metadata_path, 'wb') as f:
                 pickle.dump(metadata, f)
         except IOError as e:
-            print(f"Erro ao salvar metadados em {save_metadata_path}: {e}")
+            print(f"Error saving metadata to {save_metadata_path}: {e}")
 
-    # --- Concatenação Final ---
+    # --- Final Concatenation ---
     X_final = np.concatenate(X_augmented_list, axis=0)
     y_final = np.concatenate(y_augmented_list, axis=0)
 
     return X_final, y_final
+
 
 def create_synthetic_samples(X_train, y_train, scales=[2, 3, 5]):
     """

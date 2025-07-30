@@ -1,0 +1,18 @@
+R²,SMAPE,MAE,Well,Method,Category,Setting
+0.533322612795512,32.42139531529102,2893990.614259426,wind,LinearRegression,Cumulative,Stable & Regularized
+-59.38900754324617,124.98918910932422,9139337.8324261,solar,LinearRegression,Cumulative,Stable & Regularized
+0.99294798643194,2.2357537625654884,2553685.605481672,load,LinearRegression,Cumulative,Stable & Regularized
+-9.00248851760655,37.442282161586135,11708553.452052858,15/9-F-14,LinearRegression,Cumulative,Stable & Regularized
+-15.978801731276747,39.2524644005697,15334126.824808035,15/9-F-12,LinearRegression,Cumulative,Stable & Regularized
+0.9759726157986209,3.684133700379301,195691.40574224884,15/9-F-11,LinearRegression,Cumulative,Stable & Regularized
+0.8459419965762643,6.344485860751899,48510.87851756586,15/9-F-15 D,LinearRegression,Cumulative,Stable & Regularized
+0.8902121662877678,8.119018532417616,367571.780792085,Prod-1,LinearRegression,Cumulative,Stable & Regularized
+0.968242839336055,2.9964964494264565,153373.69517365494,Prod-2,LinearRegression,Cumulative,Stable & Regularized
+0.9994531533907448,0.5935093622245821,27529.09742695041,Prod-3,LinearRegression,Cumulative,Stable & Regularized
+0.8980454950690668,7.228532390796774,515335.1742982637,Prod-4,LinearRegression,Cumulative,Stable & Regularized
+0.9862629843743523,4.193064602437488,261474.5798356551,Prod-5,LinearRegression,Cumulative,Stable & Regularized
+0.941591654264678,6.086751192475007,344076.51822143415,Prod-6,LinearRegression,Cumulative,Stable & Regularized
+0.8977357678170788,6.758825443627034,422350.3729602989,Prod-7,LinearRegression,Cumulative,Stable & Regularized
+0.9852585209847646,3.948378625481893,191535.00025002216,Prod-8,LinearRegression,Cumulative,Stable & Regularized
+0.9824064566792686,4.183711097605818,230412.9447236732,Prod-9,LinearRegression,Cumulative,Stable & Regularized
+0.9811336772587237,4.0466050784271435,291238.5882647382,Prod-10,LinearRegression,Cumulative,Stable & Regularized

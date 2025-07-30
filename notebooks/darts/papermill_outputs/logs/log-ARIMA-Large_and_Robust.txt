@@ -1,0 +1,64 @@
+Input Notebook:  experiment_template.ipynb
+Output Notebook: papermill_outputs/notebooks/output-ARIMA-Large_and_Robust.ipynb
+Executing:   0%|          | 0/6 [00:00<?, ?cell/s]Executing notebook with kernel: myenv310
+Executing Cell 1---------------------------------------
+Ending Cell 1------------------------------------------
+Executing:  17%|█▋        | 1/6 [00:00<00:04,  1.01cell/s]Executing Cell 2---------------------------------------
+Ending Cell 2------------------------------------------
+Executing Cell 3---------------------------------------
+Ending Cell 3------------------------------------------
+Executing:  50%|█████     | 3/6 [00:36<00:40, 13.51s/cell]Executing Cell 4---------------------------------------
+Ending Cell 4------------------------------------------
+Executing:  67%|██████▋   | 4/6 [01:05<00:37, 18.79s/cell]Executing Cell 5---------------------------------------
+
+============================================================
+🏁 JOB EXECUTION COMPLETE
+
+✅ Successfully saved 17 results to papermill_outputs/results/results-ARIMA-Large_and_Robust.csv
+
+--- Metrics for this specific job ---
+
+           R²     SMAPE            MAE         Well Method    Category  \
+0    0.138190  0.522773    6575.362445         wind  ARIMA  Cumulative   
+1  -11.827979  6.142718   18330.161381        solar  ARIMA  Cumulative   
+2  -24.793097  3.440056  517589.666022         load  ARIMA  Cumulative   
+3  -18.775412  2.790297  219738.951032    15/9-F-14  ARIMA  Cumulative   
+4   -7.509155  2.097177  190827.612151    15/9-F-12  ARIMA  Cumulative   
+5    0.010115  0.884469   22011.222561    15/9-F-11  ARIMA  Cumulative   
+6   -6.469072  1.333644    6821.291997  15/9-F-15 D  ARIMA  Cumulative   
+7    0.999173  0.021145     187.118952       Prod-1  ARIMA  Cumulative   
+8    0.999961  0.004166      31.986047       Prod-2  ARIMA  Cumulative   
+9    0.988461  0.079931     641.260502       Prod-3  ARIMA  Cumulative   
+10   0.966358  0.120877    1094.836640       Prod-4  ARIMA  Cumulative   
+11   0.940819  0.167911    1532.154964       Prod-5  ARIMA  Cumulative   
+12   0.999540  0.015041     110.666970       Prod-6  ARIMA  Cumulative   
+13   0.980792  0.100456     876.906397       Prod-7  ARIMA  Cumulative   
+14   0.916497  0.181201    1278.286069       Prod-8  ARIMA  Cumulative   
+15   0.936558  0.174873    1402.854383       Prod-9  ARIMA  Cumulative   
+16   0.945111  0.167149    1628.163532      Prod-10  ARIMA  Cumulative   
+
+           Setting  
+0   Large & Robust  
+1   Large & Robust  
+2   Large & Robust  
+3   Large & Robust  
+4   Large & Robust  
+5   Large & Robust  
+6   Large & Robust  
+7   Large & Robust  
+8   Large & Robust  
+9   Large & Robust  
+10  Large & Robust  
+11  Large & Robust  
+12  Large & Robust  
+13  Large & Robust  
+14  Large & Robust  
+15  Large & Robust  
+16  Large & Robust  
+
+--- Notebook execution finished. ---
+
+Ending Cell 5------------------------------------------
+Executing Cell 6---------------------------------------
+Ending Cell 6------------------------------------------
+Executing: 100%|██████████| 6/6 [01:08<00:00, 11.39s/cell]

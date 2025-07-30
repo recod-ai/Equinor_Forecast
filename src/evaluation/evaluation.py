@@ -107,7 +107,8 @@ def compute_metrics_to_df(
     y_pred: np.ndarray, 
     well: str, 
     method: str, 
-    metric_type: str = "Series"
+    metric_type: str = "Series",
+    model_config_size: str = "N/A"
 ) -> Dict[str, Any]:
     """
     Computa as métricas R², SMAPE e MAE para uma série de dados.
@@ -127,58 +128,138 @@ def compute_metrics_to_df(
     metrics.update({
         'Well': well, 
         'Method': method, 
-        'Category': metric_type
+        'Category': metric_type,
+        'Setting': model_config_size,
     })
     return metrics
 
 
 # Função evaluate_and_plot_results com o parâmetro plot_cumulative adicionado
+# def evaluate_and_plot_results(
+#     test_series: 'TimeSeries', 
+#     forecast_series: 'TimeSeries',
+#     dataset: str,
+#     well_name: str, 
+#     lag_window: int, 
+#     horizon: int,
+#     train_cumulative_sum: float,
+#     sampling_rate: int,
+#     metrics_accumulator: List[Dict[str, Any]],
+#     method: str,
+#     plot_cumulative: bool = True  # Parâmetro adicionado
+#     model_config_size: str = "N/A"
+# ):
+#     """
+#     Avalia e plota os resultados da previsão.
+    
+#     Args:
+#         test_series (TimeSeries): Série de teste real.
+#         forecast_series (TimeSeries): Série de previsão.
+#         well_name (str): Nome do poço.
+#         lag_window (int): Tamanho da janela de lag.
+#         horizon (int): Horizonte de previsão.
+#         train_cumulative_sum (float): Soma cumulativa da série de treinamento.
+#         sampling_rate (int): Taxa de amostragem para plotagem.
+#         metrics_accumulator (List[Dict[str, Any]]): Lista para acumular as métricas.
+#         method (str): Método/Algoritmo utilizado.
+#         plot_cumulative (bool): Se True, plota a soma cumulativa.
+    
+#     Returns:
+#         None
+#     """
+    
+#     actual = test_series
+#     predicted = forecast_series
+    
+#     # Avaliar e plotar a série principal
+#     print(f"Avaliando e plotando série principal para o poço: {well_name}")
+#     metrics_series = compute_metrics_to_df(
+#         y_test=actual, 
+#         y_pred=predicted, 
+#         well=well_name, 
+#         method=method, 
+#         metric_type="Series"
+#     )
+#     if metrics_series and not plot_cumulative:
+#         metrics_accumulator.append(metrics_series)
+#     plot_results(
+#         y_test_list=actual,
+#         y_pred_list=predicted,
+#         wells=[well_name],
+#         window_size=lag_window,
+#         forecast_steps=horizon,
+#         dataset=dataset,
+#     )
+    
+#     if plot_cumulative:
+#         # Calcular as somas acumuladas
+        
+#         test_series = [item for sublist in test_series for item in sublist]
+#         forecast_series = [item for sublist in forecast_series for item in sublist]
+        
+#         actual_cumsum = pd.concat([pd.Series([train_cumulative_sum]), pd.Series(test_series)]).cumsum()
+#         predicted_cumsum = pd.concat([pd.Series([train_cumulative_sum]), pd.Series(forecast_series)]).cumsum()
+        
+#         # Downsample das séries para plotagem se necessário
+#         actual_cumsum = actual_cumsum[::sampling_rate].values
+#         predicted_cumsum = predicted_cumsum[::sampling_rate].values
+        
+#         # Avaliar e plotar a soma cumulativa
+#         print(f"\nAvaliando e plotando soma cumulativa para o poço: {well_name}")
+#         metrics_cumsum = compute_metrics_to_df(
+#             y_test=actual_cumsum, 
+#             y_pred=predicted_cumsum, 
+#             well=well_name, 
+#             method=method, 
+#             metric_type="Cumulative"
+#         )
+#         if metrics_cumsum:
+#             metrics_accumulator.append(metrics_cumsum)
+#         plot_results(
+#             y_test_list=[actual_cumsum],
+#             y_pred_list=[predicted_cumsum],
+#             wells=[well_name],
+#             window_size=lag_window,
+#             forecast_steps=horizon,
+#             dataset=dataset,
+#         )
+
+# The refactored function
+
 def evaluate_and_plot_results(
-    test_series: 'TimeSeries', 
+    test_series: 'TimeSeries',
     forecast_series: 'TimeSeries',
     dataset: str,
-    well_name: str, 
-    lag_window: int, 
+    well_name: str,
+    lag_window: int,
     horizon: int,
     train_cumulative_sum: float,
     sampling_rate: int,
-    metrics_accumulator: List[Dict[str, Any]],
+    metrics_accumulator: list,
     method: str,
-    plot_cumulative: bool = True  # Parâmetro adicionado
+    model_config_size: str = "N/A",  # <-- Correct placement of the new parameter
+    plot_cumulative: bool = True
 ):
     """
-    Avalia e plota os resultados da previsão.
-    
-    Args:
-        test_series (TimeSeries): Série de teste real.
-        forecast_series (TimeSeries): Série de previsão.
-        well_name (str): Nome do poço.
-        lag_window (int): Tamanho da janela de lag.
-        horizon (int): Horizonte de previsão.
-        train_cumulative_sum (float): Soma cumulativa da série de treinamento.
-        sampling_rate (int): Taxa de amostragem para plotagem.
-        metrics_accumulator (List[Dict[str, Any]]): Lista para acumular as métricas.
-        method (str): Método/Algoritmo utilizado.
-        plot_cumulative (bool): Se True, plota a soma cumulativa.
-    
-    Returns:
-        None
+    Avalia e plota os resultados da previsão, agora incluindo o tamanho da configuração do modelo.
     """
-    
     actual = test_series
     predicted = forecast_series
-    
-    # Avaliar e plotar a série principal
+
+    # --- Avaliação da Série Principal ---
     print(f"Avaliando e plotando série principal para o poço: {well_name}")
     metrics_series = compute_metrics_to_df(
-        y_test=actual, 
-        y_pred=predicted, 
-        well=well_name, 
-        method=method, 
-        metric_type="Series"
+        y_test=actual,
+        y_pred=predicted,
+        well=well_name,
+        method=method,
+        metric_type="Series",
+        model_config_size=model_config_size  # <-- PASSA O PARÂMETRO ADIANTE
     )
     if metrics_series and not plot_cumulative:
         metrics_accumulator.append(metrics_series)
+
+    # Plotting logic remains the same
     plot_results(
         y_test_list=actual,
         y_pred_list=predicted,
@@ -187,40 +268,39 @@ def evaluate_and_plot_results(
         forecast_steps=horizon,
         dataset=dataset,
     )
-    
+
+    # --- Avaliação da Soma Cumulativa ---
     if plot_cumulative:
-        # Calcular as somas acumuladas
-        
-        test_series = [item for sublist in test_series for item in sublist]
-        forecast_series = [item for sublist in forecast_series for item in sublist]
-        
-        actual_cumsum = pd.concat([pd.Series([train_cumulative_sum]), pd.Series(test_series)]).cumsum()
-        predicted_cumsum = pd.concat([pd.Series([train_cumulative_sum]), pd.Series(forecast_series)]).cumsum()
-        
-        # Downsample das séries para plotagem se necessário
-        actual_cumsum = actual_cumsum[::sampling_rate].values
-        predicted_cumsum = predicted_cumsum[::sampling_rate].values
-        
-        # Avaliar e plotar a soma cumulativa
+        test_values = [item for sublist in test_series for item in sublist]
+        forecast_values = [item for sublist in forecast_series for item in sublist]
+
+        actual_cumsum = pd.concat([pd.Series([train_cumulative_sum]), pd.Series(test_values)]).cumsum()
+        predicted_cumsum = pd.concat([pd.Series([train_cumulative_sum]), pd.Series(forecast_values)]).cumsum()
+
+        actual_cumsum_sampled = actual_cumsum[::sampling_rate].values
+        predicted_cumsum_sampled = predicted_cumsum[::sampling_rate].values
+
         print(f"\nAvaliando e plotando soma cumulativa para o poço: {well_name}")
         metrics_cumsum = compute_metrics_to_df(
-            y_test=actual_cumsum, 
-            y_pred=predicted_cumsum, 
-            well=well_name, 
-            method=method, 
-            metric_type="Cumulative"
+            y_test=actual_cumsum_sampled,
+            y_pred=predicted_cumsum_sampled,
+            well=well_name,
+            method=method,
+            metric_type="Cumulative",
+            model_config_size=model_config_size  # <-- PASSA O PARÂMETRO ADIANTE
         )
         if metrics_cumsum:
             metrics_accumulator.append(metrics_cumsum)
+
+        # Plotting logic remains the same
         plot_results(
-            y_test_list=[actual_cumsum],
-            y_pred_list=[predicted_cumsum],
+            y_test_list=[actual_cumsum_sampled],
+            y_pred_list=[predicted_cumsum_sampled],
             wells=[well_name],
             window_size=lag_window,
             forecast_steps=horizon,
             dataset=dataset,
         )
-
 
 def display_metrics(metrics: List[Dict[str, Any]]):
     """
@@ -232,15 +312,15 @@ def display_metrics(metrics: List[Dict[str, Any]]):
     Retorna:
     - None
     """
-    if not metrics:
-        print("\nNenhuma métrica para exibir.")
-        return
-    
     # Cria o DataFrame a partir da lista de dicionários
-    metrics_df = pd.DataFrame(metrics)
+    if not isinstance(metrics, pd.DataFrame):
+        metrics_df = pd.DataFrame(metrics)
+    else:
+        metrics_df = metrics
+
     
     # Reorganiza as colunas para melhor visualização, se existirem
-    expected_columns = ['Poço', 'Método', 'Tipo', 'R²', 'SMAPE', 'MAE']
+    expected_columns = ['Well', 'Method', 'Type', 'Poço', 'Método', 'Tipo', 'R²', 'SMAPE', 'MAE']
     existing_columns = [col for col in expected_columns if col in metrics_df.columns]
     metrics_df = metrics_df[existing_columns]
     
@@ -744,8 +824,10 @@ def evaluate_and_plot(y_true: np.ndarray, y_pred: np.ndarray, title: str, well: 
         truth=y_true,
         kind="P50",
         well=well,
+        **additional_params
     )
     return r2, smape, mae
+
 
 
 def evaluate_and_plot_all_wells(

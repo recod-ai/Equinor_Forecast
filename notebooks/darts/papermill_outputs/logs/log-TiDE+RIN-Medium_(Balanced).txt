@@ -1,0 +1,64 @@
+Input Notebook:  experiment_template.ipynb
+Output Notebook: papermill_outputs/notebooks/output-TiDE+RIN-Medium_(Balanced).ipynb
+Executing:   0%|          | 0/6 [00:00<?, ?cell/s]Executing notebook with kernel: myenv310
+Executing Cell 1---------------------------------------
+Ending Cell 1------------------------------------------
+Executing:  17%|█▋        | 1/6 [00:01<00:05,  1.03s/cell]Executing Cell 2---------------------------------------
+Ending Cell 2------------------------------------------
+Executing:  33%|███▎      | 2/6 [00:01<00:02,  1.67cell/s]Executing Cell 3---------------------------------------
+Ending Cell 3------------------------------------------
+Executing:  50%|█████     | 3/6 [01:52<02:33, 51.18s/cell]Executing Cell 4---------------------------------------
+Ending Cell 4------------------------------------------
+Executing:  67%|██████▋   | 4/6 [03:44<02:30, 75.09s/cell]Executing Cell 5---------------------------------------
+
+============================================================
+🏁 JOB EXECUTION COMPLETE
+
+✅ Successfully saved 17 results to papermill_outputs/results/results-TiDE+RIN-Medium_(Balanced).csv
+
+--- Metrics for this specific job ---
+
+           R²      SMAPE           MAE         Well    Method    Category  \
+0    0.843920   0.249759   3144.223014         wind  TiDE+RIN  Cumulative   
+1  -61.730677  11.579318  39412.396618        solar  TiDE+RIN  Cumulative   
+2    0.896540   0.197631  30440.902436         load  TiDE+RIN  Cumulative   
+3    0.919861   0.169759  13593.202174    15/9-F-14  TiDE+RIN  Cumulative   
+4    0.853119   0.262758  23437.779856    15/9-F-12  TiDE+RIN  Cumulative   
+5    0.997159   0.037323    937.017846    15/9-F-11  TiDE+RIN  Cumulative   
+6    0.790182   0.228846   1161.014532  15/9-F-15 D  TiDE+RIN  Cumulative   
+7    0.998646   0.025474    225.613866       Prod-1  TiDE+RIN  Cumulative   
+8    0.999552   0.015200    117.172956       Prod-2  TiDE+RIN  Cumulative   
+9    0.999482   0.016835    134.787006       Prod-3  TiDE+RIN  Cumulative   
+10   0.986753   0.083586    754.643761       Prod-4  TiDE+RIN  Cumulative   
+11   0.986441   0.083057    756.121069       Prod-5  TiDE+RIN  Cumulative   
+12   0.996238   0.043341    320.474015       Prod-6  TiDE+RIN  Cumulative   
+13   0.999664   0.010389     90.724556       Prod-7  TiDE+RIN  Cumulative   
+14   0.980397   0.101508    712.822971       Prod-8  TiDE+RIN  Cumulative   
+15   0.988676   0.076231    610.134606       Prod-9  TiDE+RIN  Cumulative   
+16   0.999778   0.010365    100.780152      Prod-10  TiDE+RIN  Cumulative   
+
+              Setting  
+0   Medium (Balanced)  
+1   Medium (Balanced)  
+2   Medium (Balanced)  
+3   Medium (Balanced)  
+4   Medium (Balanced)  
+5   Medium (Balanced)  
+6   Medium (Balanced)  
+7   Medium (Balanced)  
+8   Medium (Balanced)  
+9   Medium (Balanced)  
+10  Medium (Balanced)  
+11  Medium (Balanced)  
+12  Medium (Balanced)  
+13  Medium (Balanced)  
+14  Medium (Balanced)  
+15  Medium (Balanced)  
+16  Medium (Balanced)  
+
+--- Notebook execution finished. ---
+
+Ending Cell 5------------------------------------------
+Executing Cell 6---------------------------------------
+Ending Cell 6------------------------------------------
+Executing: 100%|██████████| 6/6 [03:47<00:00, 37.89s/cell]

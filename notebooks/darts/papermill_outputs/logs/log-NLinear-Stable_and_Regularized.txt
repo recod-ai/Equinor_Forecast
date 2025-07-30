@@ -1,0 +1,64 @@
+Input Notebook:  experiment_template.ipynb
+Output Notebook: papermill_outputs/notebooks/output-NLinear-Stable_and_Regularized.ipynb
+Executing:   0%|          | 0/6 [00:00<?, ?cell/s]Executing notebook with kernel: myenv310
+Executing Cell 1---------------------------------------
+Ending Cell 1------------------------------------------
+Executing:  17%|█▋        | 1/6 [00:01<00:05,  1.06s/cell]Executing Cell 2---------------------------------------
+Ending Cell 2------------------------------------------
+Executing Cell 3---------------------------------------
+Ending Cell 3------------------------------------------
+Executing:  50%|█████     | 3/6 [03:03<03:23, 67.89s/cell]Executing Cell 4---------------------------------------
+Ending Cell 4------------------------------------------
+Executing:  67%|██████▋   | 4/6 [05:46<03:21, 100.59s/cell]Executing Cell 5---------------------------------------
+
+============================================================
+🏁 JOB EXECUTION COMPLETE
+
+✅ Successfully saved 17 results to papermill_outputs/results/results-NLinear-Stable_and_Regularized.csv
+
+--- Metrics for this specific job ---
+
+          R²     SMAPE           MAE         Well   Method    Category  \
+0   0.961725  0.121959   1534.133897         wind  NLinear  Cumulative   
+1   0.949383  0.296224    931.079047        solar  NLinear  Cumulative   
+2   0.993064  0.058507   9000.696586         load  NLinear  Cumulative   
+3   0.923734  0.178629  14317.685311    15/9-F-14  NLinear  Cumulative   
+4   0.966411  0.154647  13768.923015    15/9-F-12  NLinear  Cumulative   
+5   0.993442  0.059562   1496.930497    15/9-F-11  NLinear  Cumulative   
+6   0.766213  0.239976   1217.702211  15/9-F-15 D  NLinear  Cumulative   
+7   0.999193  0.020340    180.029013       Prod-1  NLinear  Cumulative   
+8   0.999461  0.016896    130.221993       Prod-2  NLinear  Cumulative   
+9   0.999445  0.017807    142.452320       Prod-3  NLinear  Cumulative   
+10  0.999690  0.013254    119.360541       Prod-4  NLinear  Cumulative   
+11  0.999707  0.012034    109.527206       Prod-5  NLinear  Cumulative   
+12  0.996199  0.043090    318.678488       Prod-6  NLinear  Cumulative   
+13  0.999795  0.009947     86.551028       Prod-7  NLinear  Cumulative   
+14  0.998852  0.025153    176.189116       Prod-8  NLinear  Cumulative   
+15  0.999750  0.010945     87.377158       Prod-9  NLinear  Cumulative   
+16  0.998737  0.024047    234.221895      Prod-10  NLinear  Cumulative   
+
+                 Setting  
+0   Stable & Regularized  
+1   Stable & Regularized  
+2   Stable & Regularized  
+3   Stable & Regularized  
+4   Stable & Regularized  
+5   Stable & Regularized  
+6   Stable & Regularized  
+7   Stable & Regularized  
+8   Stable & Regularized  
+9   Stable & Regularized  
+10  Stable & Regularized  
+11  Stable & Regularized  
+12  Stable & Regularized  
+13  Stable & Regularized  
+14  Stable & Regularized  
+15  Stable & Regularized  
+16  Stable & Regularized  
+
+--- Notebook execution finished. ---
+
+Ending Cell 5------------------------------------------
+Executing Cell 6---------------------------------------
+Ending Cell 6------------------------------------------
+Executing: 100%|██████████| 6/6 [05:48<00:00, 58.08s/cell] 

@@ -44,23 +44,23 @@ def plot_series(
     *,
     lower: Optional[np.ndarray] = None,
     upper: Optional[np.ndarray] = None,
-    envelope_color: str = "rgba(255,99,132,0.2)",   # envelope vermelho-claro
-    samples: Optional[np.ndarray] = None,           # (N,B,H)
+    envelope_color: str = "rgba(255,99,132,0.2)",
+    samples: Optional[np.ndarray] = None,
     q_phys: Optional[np.ndarray] = None,
     res: Optional[np.ndarray] = None,
-    # --- métricas / extras ------------------------------------------
-    smape: float | None = None,
-    mae: float | None = None,
-    window_size: int | None = None,
-    forecast_steps: int | None = None,
-    percentage_split: float | None = None,
     # visual ---------------------------------------------------------
     title: str = "Forecast",
     well: str = "",
     width: int = 1200,
     height: int = 600,
+    # --- metrics / extras ------------------------------------------
+    smape: float | None = None,
+    mae: float | None = None,
+    window_size: int | None = None,
+    forecast_steps: int | None = None,
+    percentage_split: float | None = None,
 ):
-    """Plota verdade, previsão, envelope + métricas."""
+    """Plot actual vs prediction with optional envelope and metrics."""
     import numpy as np
     import plotly.graph_objects as go
 
@@ -75,7 +75,7 @@ def plot_series(
     x = np.arange(mean_curve.size)
     fig = go.Figure()
 
-    # linhas principais
+    # Main series
     _add_trace(fig, x, truth, name="Actual", color="#206A92")
 
     if lower is not None and upper is not None:
@@ -96,7 +96,7 @@ def plot_series(
     if res is not None:
         _add_trace(fig, x, res, name="Residual", color="#8E44AD")
 
-    # fan-chart amostral
+    # Fan chart (5–95%)
     if samples is not None:
         q5, q95 = np.percentile(samples, [5, 95], axis=0)
         fig.add_trace(go.Scatter(
@@ -109,43 +109,60 @@ def plot_series(
             name="Fan 5–95%",
         ))
 
+    # Layout and legend (legend moved down and enlarged)
     fig.update_layout(
-        title=dict(text=f"{title}", x=0.5, font=dict(size=36)),
-        xaxis_title="Steps",
+        title=dict(text=title, x=0.5, font=dict(size=36)),
+        xaxis_title="Days",
         yaxis_title="Rate",
         plot_bgcolor="white",
         width=width,
         height=height,
-        legend=dict(orientation="h", x=0.5, y=1.1, xanchor="center"),
+        legend=dict(
+            orientation="h",
+            x=0.5,
+            y=-0.25,  # pushed further down
+            xanchor="center",
+            font=dict(size=20)  # larger font
+        ),
         xaxis=dict(showgrid=False),
         yaxis=dict(showgrid=False),
     )
 
-    # anotações de métricas
-    ann = []
-    if smape is not None: ann.append((f"SMAPE: {smape:.2f}%", "#206A92"))
-    if mae is not None:   ann.append((f"MAE: {mae:.2f}", "yellowgreen"))
-    if window_size is not None:
-        ann.append((f"Windows: {window_size}", "#2E2E2E"))
+    metrics_lines = []
+    # Metrics annotations (bottom-right corner, ~20% from bottom)
+    if smape is not None:
+        metrics_lines.append(f"<span style='color:#206A92'>SMAPE: {smape:.2f}%</span>")
+    if mae is not None:
+        metrics_lines.append(f"<span style='color:yellowgreen'>MAE: {mae:.2f}</span>")
     if forecast_steps is not None:
-        ann.append((f"Steps: {forecast_steps}", "#2E2E2E"))
+        metrics_lines.append(f"<span style='color:#2E2E2E'>Horizon: {forecast_steps}</span>")
     if percentage_split is not None:
-        ann.append((f"Train: {percentage_split*100:.0f}%", "#2E2E2E"))
+        metrics_lines.append(f"<span style='color:#2E2E2E'>Train: {percentage_split*100:.0f}%</span>")
+    if window_size is not None:
+        metrics_lines.append(f"<span style='color:#2E2E2E'>Windows: {window_size}</span>")
+    
+    # Join all lines into one HTML-formatted string with line breaks
+    metrics_text = "<br>".join(metrics_lines)
 
-    for i, (text, color) in enumerate(ann):
-        fig.add_annotation(
-            x=0.02, y=0.98 - i * 0.10,
-            xref="paper", yref="paper",
-            text=text,
-            showarrow=False,
-            font=dict(size=24, color=color),
-            bgcolor="rgba(255,255,255,0.8)",
-        )
+    # Draw annotations stacked upwards from bottom-right
+    fig.add_annotation(
+        x=0.8,
+        y=0.5,  # starts 20% from bottom, stacks up
+        xref="paper",
+        yref="paper",
+        text=metrics_text,
+        showarrow=False,
+        font=dict(size=22),
+        bgcolor="rgba(255,255,255,0.85)",
+        xanchor="left",
+        align="left"
+    )
 
     fig.update_xaxes(title_font=dict(size=26), tickfont=dict(size=22))
     fig.update_yaxes(title_font=dict(size=26), tickfont=dict(size=22))
 
     fig.show()
+
 
 
 
@@ -273,6 +290,140 @@ def plot_predictions_wrapper(
         **extra_plot_kwargs,   # smape, mae, window_size, forecast_steps, …
     )
 
+import plotly.graph_objects as go
+import numpy as np
+from typing import Dict, Optional
+
+
+def plot_integrated_view(
+    x_axis: np.ndarray,
+    y_actual: np.ndarray,
+    y_pred_val: np.ndarray,
+    y_pred_test: np.ndarray,
+    split_indices: Dict[str, int],
+    metrics_val: Optional[Dict[str, float]],
+    metrics_test: Optional[Dict[str, float]],
+    title: str,
+    yaxis_title: str = "Rate",
+    well: str = "",
+    font_scale: float = 1.2,
+    show: bool = True,
+):
+    """
+    Generates a highly-polished, integrated plot showing train, validation, and test data.
+    """
+    import plotly.graph_objects as go
+
+    # --- Cores e Estilos (Mantendo a paleta original e profissional) ---
+    COLOR_ACTUAL = '#206A92'      # Azul Sólido
+    COLOR_VAL = '#ed6a5a'           # Validação
+    COLOR_TEST = 'yellowgreen'     # Verde-amarelado para Teste
+    COLOR_TRAIN_FILL = "rgba(30, 60, 90, 0.05)" 
+    COLOR_VAL_FILL = "rgba(237,106,90,0.05)"
+    # Fundo de teste será transparente
+
+    fig = go.Figure()
+
+    # --- Áreas Sombreadas com Fontes Maiores ---
+    fig.add_vrect(
+        x0=0, x1=split_indices['train_end'],
+        fillcolor=COLOR_TRAIN_FILL, layer="below", line_width=0,
+        annotation_text="Train", annotation_position="top left",
+        annotation_font_size=20 * font_scale, annotation_font_color="#223"
+    )
+    fig.add_vrect(
+        x0=split_indices['train_end'], x1=split_indices['val_end'],
+        fillcolor=COLOR_VAL_FILL, layer="below", line_width=0,
+        annotation_text="Validation", annotation_position="top left",
+        annotation_font_size=20 * font_scale, annotation_font_color="#b93d2e"
+    )
+    fig.add_vrect(
+        x0=split_indices['val_end'], x1=len(x_axis)-1,
+        fillcolor="rgba(255, 255, 255, 0)", layer="below", line_width=0,
+        annotation_text="Test", annotation_position="top left",
+        annotation_font_size=20 * font_scale, annotation_font_color="#33896a"
+    )
+
+    # --- Séries com a Paleta de Cores Original ---
+    fig.add_trace(go.Scatter(
+        x=x_axis, y=y_actual, mode='lines', name='Actual',
+        line=dict(color=COLOR_ACTUAL, width=4),
+        hovertemplate='Day: %{x}<br>Actual: %{y:,.2f}<extra></extra>',
+        hoverlabel=dict(bgcolor='white', font_size=16*font_scale)
+    ))
+    fig.add_trace(go.Scatter(
+        x=x_axis, y=y_pred_val, mode='lines', name='Validation Prediction',
+        line=dict(color=COLOR_VAL, width=3, dash='dash'),
+        hovertemplate='Day: %{x}<br>Validation Pred: %{y:,.2f}<extra></extra>',
+        hoverlabel=dict(bgcolor='white', font_size=16*font_scale)
+    ))
+    fig.add_trace(go.Scatter(
+        x=x_axis, y=y_pred_test, mode='lines', name='Test Prediction',
+        line=dict(color=COLOR_TEST, width=3, dash='dash'),
+        hovertemplate='Day: %{x}<br>Test Pred: %{y:,.2f}<extra></extra>',
+        hoverlabel=dict(bgcolor='white', font_size=16*font_scale)
+    ))
+
+    # --- Métricas com Posição Ajustada ---
+    y_anno = 0.83
+    if metrics_val:
+        # CORREÇÃO: Ponto final removido da linha abaixo
+        text_val = "<br>".join([f"<b>{k}:</b> {v:.2f}" for k, v in metrics_val.items()])
+        fig.add_annotation(
+            text=f"<b>Validation</b><br>{text_val}",
+            align='right', showarrow=False, xref='paper', yref='paper',
+            x=0.98, y=y_anno, xanchor='right',
+            bordercolor=COLOR_VAL, borderwidth=1,
+            bgcolor="rgba(255,255,255,0.90)",
+            font=dict(size=18*font_scale, color=COLOR_VAL)
+        )
+        y_anno -= 0.26 
+    if metrics_test:
+        text_test = "<br>".join([f"<b>{k}:</b> {v:.2f}" for k, v in metrics_test.items()])
+        fig.add_annotation(
+            text=f"<b>Test</b><br>{text_test}",
+            align='right', showarrow=False, xref='paper', yref='paper',
+            x=0.98, y=y_anno, xanchor='right',
+            bordercolor=COLOR_TEST, borderwidth=1,
+            bgcolor="rgba(255,255,255,0.90)",
+            font=dict(size=18*font_scale, color=COLOR_TEST)
+        )
+
+    # --- Layout Final com Ajustes ---
+    fig.update_layout(
+        title=dict(
+            text=f"<b>{title}</b><br><span style='font-size: {19*font_scale}px; color: #555;'>Well: {well}</span>",
+            x=0.5, y=0.97, font=dict(size=26*font_scale, family="Lato, Arial, sans-serif")
+        ),
+        xaxis_title="Days",
+        yaxis_title=yaxis_title,
+        xaxis=dict(
+            title_font_size=20*font_scale, tickfont_size=16*font_scale,
+            showgrid=False, tickformat="d"
+        ),
+        yaxis=dict(
+            title_font_size=20*font_scale, tickfont_size=16*font_scale,
+            showgrid=False
+        ),
+        legend=dict(
+            x=0.5, y=-0.13, xanchor='center', yanchor='top',
+            orientation='h',
+            font=dict(size=17*font_scale), bgcolor='rgba(255,255,255,0.8)',
+            bordercolor='rgba(0,0,0,0.12)', borderwidth=1
+        ),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        width=1600, height=800,
+        margin=dict(t=120, r=220, b=80, l=80),
+        hovermode='x unified'
+    )
+
+    fig.update_xaxes(zeroline=False)
+    fig.update_yaxes(zeroline=False)
+
+    if show:
+        fig.show()
+    return fig
 
 
 COLOR_PRIMARY = '#0077B6'  # Strong Blue (Star Command Blue)
