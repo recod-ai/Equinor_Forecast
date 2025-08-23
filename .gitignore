@@ -5,6 +5,12 @@ legacy/
 src/experiment_configs/profiles
 src/experiment_configs/results
 src/experiment_configs/studies
+# Saídas e papermill
+notebooks/darts/papermill_outputs/
+*.db
+# Apresentações geradas em notebook
+notebooks/ppt_slides.ipynb
+
 .venv/
 darts_logs/
 .ipynb_checkpoints/
