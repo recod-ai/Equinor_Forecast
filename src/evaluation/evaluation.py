@@ -622,7 +622,7 @@ def plot_predictions(y, y_pred, dataset, well, set_name="Test Set", smape=0, mae
     )
 
     # Show the figure
-    fig.show()
+    fig.show(renderer="png")
     
 from typing import Optional   
 # Função genérica de plotagem

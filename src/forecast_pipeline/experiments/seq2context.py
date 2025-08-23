@@ -39,8 +39,6 @@ class ExperimentSeq2Context(BaseExperiment):
         pois esta classe não é executada via 'run' neste fluxo de trabalho.
         """
         pass
-
-    # In src/forecast_pipeline/experiments/seq2context.py
     
     def load_and_prepare(self):
         """
@@ -60,11 +58,11 @@ class ExperimentSeq2Context(BaseExperiment):
         (
             X_train, X_val, X_test,
             y_train, y_val, y_test,
-            scaler_target, y_train_original
+            scaler_X, scaler_target, y_train_original
         ) = prepare_data_seq(
             df, main, p["lag_window"], p["horizon"],
-            test_size=p.get("test_size", 0.6), val_size=p.get("val_size", 0.1),
-            data_aug=True, data_aug_params=aug_params
+            test_size=p.get("test_size", 0.5), val_size=p.get("val_size", 0.1),
+            data_aug_params=aug_params
         )
         
         if p.get("apply_adaptive_filtering", False):
@@ -125,5 +123,5 @@ class ExperimentSeq2Context(BaseExperiment):
         # 3. Final return (unchanged)
         # -----------------------------------------------------------------
         prediction_input = X_test
-        return train_kwargs, prediction_input, y_test, scaler_target, y_train_original
+        return train_kwargs, prediction_input, y_test, scaler_X, scaler_target, y_train_original
 

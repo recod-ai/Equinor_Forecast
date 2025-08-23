@@ -40,7 +40,11 @@ LEGACY_MODEL_REGISTRY = {
     'Seq2PIN': create_model_arch9,
 }
 
-def create_model(architecture_name: str, hp_config: dict = None, **kwargs):
+def create_model(architecture_name: str, 
+                 hp_config: dict = None, 
+                 scaler_X=None,
+                 scaler_target=None, 
+                 **kwargs):
     """
     Fábrica de modelos estendida.
     Cria um modelo a partir do registry legado ou dinamicamente a partir de uma configuração.
@@ -59,6 +63,8 @@ def create_model(architecture_name: str, hp_config: dict = None, **kwargs):
     if architecture_name in LEGACY_MODEL_REGISTRY:
         logging.info("Encontrado no registry de modelos legados.")
         create_fn = LEGACY_MODEL_REGISTRY[architecture_name]
+        kwargs['scaler_X'] = scaler_X
+        kwargs['scaler_target'] = scaler_target
         return create_fn(**kwargs)
         
     # 2. Se não encontrou, tenta construir a partir das configurações DINÂMICAS

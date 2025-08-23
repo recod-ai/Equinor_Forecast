@@ -1,6 +1,0 @@
-batch_size,data_sample,epochs,lag_window,learning_rate,physics_strategy,experiment_id,seed
-16,0.75,20,30,0.0025380432059846298,combined_exp_arps,validation_F14_PIN_Deterministic_rank_02,42
-32,0.5,50,30,0.0006313416989085669,combined_exp_arps,validation_F14_PIN_Deterministic_rank_03,42
-16,0.25,50,30,0.0009442364023283076,pressure_ensemble,validation_F14_PIN_Deterministic_rank_04,42
-64,0.75,20,30,0.004829782816264287,static,validation_F14_PIN_Deterministic_rank_05,42
-16,0.5,200,30,0.025289544078280317,arps,validation_F14_PIN_Deterministic_rank_06,42

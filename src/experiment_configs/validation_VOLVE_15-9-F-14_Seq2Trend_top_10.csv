@@ -1,0 +1,2 @@
+batch_size,data_sample,epochs,lag_window,learning_rate,physics_strategy,experiment_id,seed
+32,0.75,50,30,0.00011474440879019778,exponential,validation_VOLVE_15-9-F-14_Seq2Trend_rank_01,42

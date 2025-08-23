@@ -450,6 +450,32 @@ def load_df_opsd(file_path):
     except Exception as e:
         print(f"Erro ao carregar os dados: {e}")
         return None
+
+
+# ---------------- EXEMPLO DE USO ----------------
+# df_corr = build_pressure_corrections(
+#     df,
+#     time_col="DATE",
+#     p_col="AVG_DOWNHOLE_PRESSURE",
+#     well_col="WELL_ID",        # ou None se for série única
+#     window=30,
+#     noise_frac=0.01,
+#     floor_frac=0.05,
+#     half_life=5,
+# )
+# plot_pressure_corrections(
+#     df_corr,
+#     time_col="DATE",
+#     p_col="AVG_DOWNHOLE_PRESSURE",
+#     well_col="WELL_ID",        # ou None
+#     well_id=None,              # deixe None para escolher o poço com mais zeros
+# )
+#
+# # Depois de inspecionar, escolha a coluna:
+# chosen = "AVG_DOWNHOLE_PRESSURE__interpolate_linear"
+# df_final = df_corr.copy()
+# df_final["AVG_DOWNHOLE_PRESSURE"] = df_final[chosen]
+
                                                   
 def engineer_features(
     df: pd.DataFrame,
@@ -495,6 +521,25 @@ def engineer_features(
         df["AVG_DOWNHOLE_PRESSURE"] = df["AVG_DOWNHOLE_PRESSURE"].apply(bar2psi)  # psi
         df["AVG_WHP_P"]            = df["AVG_WHP_P"].apply(bar2psi)
 
+
+    import numpy as np
+
+    col = "AVG_DOWNHOLE_PRESSURE"
+    rng = np.random.default_rng(42)
+    
+    # média ignorando zeros
+    mean_val = df.loc[df[col] > 0, col].mean()
+    
+    # máscara dos valores zero
+    mask_zero = df[col] == 0
+    
+    # ruído pequeno (1% da média)
+    noise = rng.normal(0, mean_val * 0.01, size=mask_zero.sum())
+    
+    # substitui zeros por média + ruído
+    df.loc[mask_zero, col] = mean_val + noise
+
+
     # --------------------------------------------------- 2. ΔP e PI
     df["delta_P"] = df["AVG_DOWNHOLE_PRESSURE"] - df["AVG_WHP_P"]
     df["delta_P"] = causal_impute(df["delta_P"]).replace(0, 1e-6)
@@ -525,7 +570,7 @@ def engineer_features(
     # --------------------------- PLOT COM UNIDADES ---------------------------
     # plot_by_well_advanced(
     #     df,
-    #     columns=["BORE_OIL_VOL", "AVG_DOWNHOLE_PRESSURE", "PI"],
+    #     columns=["BORE_OIL_VOL", "BORE_GAS_VOL", "AVG_DOWNHOLE_PRESSURE", "PI"],
     #     well=well,     # <-- aparece no título, se for fornecido
     # )
 
@@ -565,7 +610,7 @@ def engineer_features_unisim(
     df = df.copy().loc[df["Oil Rate SC"] > 0]
 
     # 1) conversões coerentes ------------------------------------------
-    df["Gas Rate SC"]  = np.log1p(df["Gas Rate SC"])
+    # df["Gas Rate SC"]  = np.log1p(df["Gas Rate SC"])
     df["Oil Rate SC"]  = df["Oil Rate SC"].apply(m3d2stbd)
 
     # *** CONVERTA EM-PLACE a coluna ORIGINAL ***
@@ -589,7 +634,7 @@ def engineer_features_unisim(
     # --------------------------- PLOT COM UNIDADES ---------------------------
     # plot_by_well_advanced(
     #     df,
-    #     columns=["Oil Rate SC", "Well Bottom-hole Pressure", "PI"],
+    #     columns=["Oil Rate SC", "Well Bottom-hole Pressure", "PI", "Gas Rate SC"],
     #     well=well,     # <-- aparece no título, se for fornecido
     # )
 

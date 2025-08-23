@@ -1,11 +1,15 @@
-# Arquivo: src/config_loader.py
+# File: src/config_loader.py
 
 import yaml
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from pydantic import BaseModel, Field
+from box import Box
 
-# --- Modelos de Dados Pydantic para Validação ---
+# =========================================================================
+# === EXISTING CODE (UNCHANGED) ===========================================
+# =========================================================================
+# Your existing models and functions are preserved to maintain compatibility.
 
 class BlockConfig(BaseModel):
     type: str
@@ -14,59 +18,66 @@ class BlockConfig(BaseModel):
 class ArchitectureConfig(BaseModel):
     architecture_id: str
     summary: str
-    builder: str # "dynamic" ou "legacy"
+    builder: str
     blocks: Optional[List[BlockConfig]] = None
-    params: Optional[Dict[str, Any]] = None # Para modelos 'legacy'
+    params: Optional[Dict[str, Any]] = None
 
 class HyperparameterProfile(BaseModel):
     hyperparam_id: str
     summary: str
     overrides: Dict[str, Any] = Field(default_factory=dict)
 
-# --- Funções de Carregamento ---
-
 def load_yaml_config(file_path: Path) -> List[Dict]:
-    """Carrega e analisa um arquivo de configuração YAML."""
+    """Loads and parses a YAML configuration file."""
     if not file_path.exists():
-        raise FileNotFoundError(f"Arquivo de configuração não encontrado: {file_path}")
+        raise FileNotFoundError(f"Configuration file not found: {file_path}")
     with open(file_path, 'r') as f:
         return yaml.safe_load(f)
 
 def load_experiment_configs(config_dir: str | Path = "experiment_configs"):
     """
-    Carrega e valida todas as configurações de arquitetura e hiperparâmetros.
+    Loads and validates all architecture and hyperparameter configurations.
     """
     base_path = Path(__file__).resolve().parent / config_dir
     
-    # Carrega e valida arquiteturas
     arch_data = load_yaml_config(base_path / "architectures.yaml")
     architectures = [ArchitectureConfig(**item) for item in arch_data]
     
-    # Carrega e valida hiperparâmetros
     hp_data = load_yaml_config(base_path / "hyperparameters.yaml")
     hyperparams = [HyperparameterProfile(**item) for item in hp_data]
     
-    print(f"INFO: Carregadas {len(architectures)} arquiteturas e {len(hyperparams)} perfis de hiperparâmetros.")
+    print(f"INFO: Loaded {len(architectures)} architectures and {len(hyperparams)} hyperparameter profiles.")
     
     return {
         "architectures": architectures,
         "hyperparameters": hyperparams
     }
 
-# Exemplo de como usar (para teste)
-if __name__ == "__main__":
-    try:
-        configs = load_experiment_configs()
-        # Imprime a primeira arquitetura para verificar
-        print("\nExemplo de Arquitetura Carregada:")
-        print(configs["architectures"][0].model_dump_json(indent=2))
+# =========================================================================
+# === NEW FUNCTIONALITY (ADDED) ===========================================
+# =========================================================================
+
+def load_campaign_config(path: Union[str, Path]) -> Box:
+    """
+    Loads a generic YAML campaign configuration file from the given path.
+
+    This function is designed to load files like 'f14_context_volve.yaml'
+    and provides easy, attribute-style access to its contents.
+
+    Args:
+        path (Union[str, Path]): The path to the YAML campaign file.
+
+    Returns:
+        Box: A Box object that allows accessing config values with dot notation
+             (e.g., config.run_scope.wells).
+    """
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Campaign configuration file not found: {path}")
         
-        # Imprime o primeiro perfil de HP para verificar
-        print("\nExemplo de Perfil de Hiperparâmetro Carregado:")
-        print(configs["hyperparameters"][0].model_dump_json(indent=2))
-        
-    except FileNotFoundError as e:
-        print(f"ERRO: {e}")
-        print("Certifique-se de que a pasta 'experiment_configs' existe e contém os arquivos YAML.")
-    except Exception as e:
-        print(f"Ocorreu um erro ao validar as configurações: {e}")
+    with open(path) as f:
+        config_dict = yaml.safe_load(f)
+    
+    # Convert the dictionary to a Box object for convenient access.
+    # default_box=True ensures that nested dictionaries also become Box objects.
+    return Box(config_dict, default_box=True)

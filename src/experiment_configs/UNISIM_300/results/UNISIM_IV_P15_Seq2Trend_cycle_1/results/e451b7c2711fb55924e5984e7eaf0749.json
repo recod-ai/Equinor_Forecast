@@ -1,0 +1,239 @@
+{
+  "status": "success",
+  "job_hash": "e451b7c2711fb55924e5984e7eaf0749",
+  "experiment_id": "UNISIM_IV_P15_Seq2Trend_trial_48",
+  "well": "P15",
+  "key_metrics": {
+    "val_smape_agg": 6.418449813036889,
+    "val_smape_cum": 0.2470103157061567
+  },
+  "config": {
+    "architecture_name": "Seq2Trend",
+    "feature_kind": "Normal",
+    "use_known_good": false,
+    "data_sample": 0.01,
+    "lag_window": 300,
+    "horizon": 300,
+    "epochs": 100,
+    "patience": 20,
+    "batch_size": 8,
+    "learning_rate": 0.01,
+    "test_size": 0.6,
+    "val_size": 0.1,
+    "aggregation_method": "median",
+    "evaluate_by_slice": true,
+    "slice_ratios": [
+      1.0
+    ],
+    "aggregation_quantiles": "[0.25, 0.5, 0.75]",
+    "plot": false,
+    "scenario": "P50",
+    "band": null,
+    "show_components": false,
+    "seed": 42,
+    "ensemble_models": 1,
+    "selected_features": [
+      "PI",
+      "CE",
+      "BORE_GAS_VOL",
+      "AVG_DOWNHOLE_PRESSURE",
+      "AVG_WHP_P",
+      "Tempo_Inicio_Prod",
+      "Taxa_Declinio",
+      "BORE_OIL_VOL"
+    ],
+    "physics_strategy": "pressure_ensemble",
+    "trend_degree": 4,
+    "optuna_trial_number": 48,
+    "experiment_id": "UNISIM_IV_P15_Seq2Trend_trial_48",
+    "architecture_profile": null,
+    "profile_group": "default_group",
+    "run_output_dir": "/home/gabriel/Documentos/Equinor/src/experiment_configs/results/UNISIM_IV_P15_Seq2Trend_cycle_1/results",
+    "strategy_config": {
+      "strategy_name": "pressure_ensemble"
+    }
+  },
+  "metadata": {
+    "run_timestamp_utc": "2025-08-22T20:30:23.681500",
+    "hostname": "gabriel-systemproductname",
+    "python_version": "3.10.5",
+    "git_commit_hash": "4cecbd944ef8d29df9f9bd898ca9045475c08dda"
+  },
+  "results": {
+    "status": "success",
+    "aggregated_metrics_test": [
+      {
+        "R\u00b2": 0.05916492650640326,
+        "SMAPE": 6.96317162240412,
+        "MAE": 1944.0824767776642,
+        "Well": "P15",
+        "Method": "Seq2Trend",
+        "Category": "Aggregated",
+        "strategy": "pressure_ensemble",
+        "extractor": "none",
+        "fuser": "none",
+        "Kind": "Aggregated_Window"
+      }
+    ],
+    "cumulative_metrics_test": [
+      {
+        "R\u00b2": 0.9929117344853595,
+        "SMAPE": 1.4560399033340703,
+        "MAE": 394042.44360311737,
+        "Well": "P15",
+        "Method": "Seq2Trend",
+        "Category": "Cumulative",
+        "strategy": "pressure_ensemble",
+        "extractor": "none",
+        "fuser": "none",
+        "Kind": "Cumulative_Sum"
+      }
+    ],
+    "global_metrics_test": {
+      "Method": "Seq2Trend",
+      "Well": "P15",
+      "strategy": "pressure_ensemble",
+      "extractor": "none",
+      "fuser": "none",
+      "R\u00b2": 0.05916492650640326,
+      "SMAPE": 6.96317162240412,
+      "MAE": 1944.0824767776642,
+      "Category": "Global",
+      "Kind": "Overall"
+    },
+    "aggregated_metrics_val": [
+      {
+        "R\u00b2": -0.024321467615792125,
+        "SMAPE": 6.418449813036889,
+        "MAE": 2020.7422716808492,
+        "Well": "P15",
+        "Method": "Seq2Trend",
+        "Category": "Aggregated",
+        "strategy": "pressure_ensemble",
+        "extractor": "none",
+        "fuser": "none",
+        "Kind": "Aggregated_Window"
+      }
+    ],
+    "cumulative_metrics_val": [
+      {
+        "R\u00b2": 0.9995386769868476,
+        "SMAPE": 0.2470103157061567,
+        "MAE": 51322.32365767727,
+        "Well": "P15",
+        "Method": "Seq2Trend",
+        "Category": "Cumulative",
+        "strategy": "pressure_ensemble",
+        "extractor": "none",
+        "fuser": "none",
+        "Kind": "Cumulative_Sum"
+      }
+    ],
+    "global_metrics_val": {
+      "Method": "Seq2Trend",
+      "Well": "P15",
+      "strategy": "pressure_ensemble",
+      "extractor": "none",
+      "fuser": "none",
+      "R\u00b2": -0.024321467615792125,
+      "SMAPE": 6.418449813036889,
+      "MAE": 2020.7422716808492,
+      "Category": "Global",
+      "Kind": "Overall"
+    },
+    "slice_agg_test": [
+      [
+        {
+          "R\u00b2": 0.05916492650640326,
+          "SMAPE": 6.96317162240412,
+          "MAE": 1944.0824767776642,
+          "Well": "P15",
+          "Method": "Seq2Trend",
+          "Category": "Aggregated 100%",
+          "strategy": "pressure_ensemble",
+          "extractor": "none",
+          "fuser": "none",
+          "Kind": "Aggregated_Window"
+        }
+      ]
+    ],
+    "slice_cum_test": [
+      [
+        {
+          "R\u00b2": 0.9929117344853595,
+          "SMAPE": 1.4560399033340703,
+          "MAE": 394042.44360311737,
+          "Well": "P15",
+          "Method": "Seq2Trend",
+          "Category": "Cumulative 100%",
+          "strategy": "pressure_ensemble",
+          "extractor": "none",
+          "fuser": "none",
+          "Kind": "Cumulative_Sum"
+        }
+      ]
+    ],
+    "slice_glob_test": [
+      {
+        "Method": "Seq2Trend",
+        "Well": "P15",
+        "strategy": "pressure_ensemble",
+        "extractor": "none",
+        "fuser": "none",
+        "R\u00b2": 0.05916492650640326,
+        "SMAPE": 6.96317162240412,
+        "MAE": 1944.0824767776642,
+        "Category": "Global 100%",
+        "Kind": "Overall"
+      }
+    ],
+    "slice_agg_val": [
+      [
+        {
+          "R\u00b2": -0.024321467615792125,
+          "SMAPE": 6.418449813036889,
+          "MAE": 2020.7422716808492,
+          "Well": "P15",
+          "Method": "Seq2Trend",
+          "Category": "Aggregated 100%",
+          "strategy": "pressure_ensemble",
+          "extractor": "none",
+          "fuser": "none",
+          "Kind": "Aggregated_Window"
+        }
+      ]
+    ],
+    "slice_cum_val": [
+      [
+        {
+          "R\u00b2": 0.9995386769868476,
+          "SMAPE": 0.2470103157061567,
+          "MAE": 51322.32365767727,
+          "Well": "P15",
+          "Method": "Seq2Trend",
+          "Category": "Cumulative 100%",
+          "strategy": "pressure_ensemble",
+          "extractor": "none",
+          "fuser": "none",
+          "Kind": "Cumulative_Sum"
+        }
+      ]
+    ],
+    "slice_glob_val": [
+      {
+        "Method": "Seq2Trend",
+        "Well": "P15",
+        "strategy": "pressure_ensemble",
+        "extractor": "none",
+        "fuser": "none",
+        "R\u00b2": -0.024321467615792125,
+        "SMAPE": 6.418449813036889,
+        "MAE": 2020.7422716808492,
+        "Category": "Global 100%",
+        "Kind": "Overall"
+      }
+    ],
+    "well": "P15",
+    "experiment_id": "UNISIM_IV_P15_Seq2Trend_trial_48"
+  }
+}

@@ -51,6 +51,16 @@ def generate_lagged_features(
 
 def load_and_preprocess_data(DataSource, config, selected_features, well):
     # Load data using the provided configuration
+    
+    # # --- ADD THIS DEBUGGING BLOCK ---
+    # print("\n" + "="*20 + " 🕵️ DEBUGGING load_and_preprocess_data 🕵️ " + "="*20)
+    # print(f"Well being processed: {well}")
+    # print("Data Source Config (`config`) being used:")
+    # import json
+    # print(json.dumps(config, indent=2, default=str)) # Use json to handle Path objects
+    # print("="*67 + "\n")
+    # # --- END OF DEBUGGING BLOCK ---
+    
     data_source_obj = DataSource(config)
     loader = data_source_obj.get_loader()
     df_loaded = loader.load()

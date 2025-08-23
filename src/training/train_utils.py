@@ -721,13 +721,13 @@ def _chunk_worker(
     import gc, logging
     import os, random
 
-    # seed = 42
-    # os.environ['PYTHONHASHSEED'] = str(seed)
-    # os.environ['TF_DETERMINISTIC_OPS'] = '1'
-    # random.seed(seed)
-    # np.random.seed(seed)
-    # tf.random.set_seed(seed)
-    # tf.config.experimental.enable_op_determinism()
+    seed = 42
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ['TF_DETERMINISTIC_OPS'] = '1'
+    random.seed(seed)
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+    tf.config.experimental.enable_op_determinism()
 
     with_snapshots = True
 

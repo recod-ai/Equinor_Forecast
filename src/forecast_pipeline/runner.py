@@ -247,6 +247,7 @@ def run_experiments_for_config(filter_cfg, data_sources, ensemble_size, profile_
     """Full pipeline: generate → execute → collate → clean."""
     key = f"adaptive_{filter_cfg['apply_adaptive_filtering']}_method_{filter_cfg.get('filter_method','None')}"
     params = {**DEFAULT_EXP_PARAMS, "ensemble_models": ensemble_size, **filter_cfg}
+    # print('params', params)
     jobs = generate_jobs(data_sources, params)
     logging.info(f"Dispatching {len(jobs)} jobs")
     raw = execute_jobs(jobs)

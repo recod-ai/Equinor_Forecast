@@ -3,6 +3,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = BASE_DIR / "data"
 from data.data_preparation import apply_custom_kalman_filter
+from typing import List, Dict, Optional, Callable, Any
 
 # Define a mapping for UNISIM-II-H variables
 UNISIM_VARIABLE_MAPPING = {
@@ -69,7 +70,7 @@ def get_data_sources(opsd_type: str = "wind") -> list[dict]:
             # FIX: The "wells" key was duplicated. I combined the lists.
             # If the intention was to use only one, change it here.
             "wells": ["15/9-F-14", "15/9-F-12", "15/9-F-11", "15/9-F-15 D"],
-            # "wells": ["15/9-F-14"],
+            "wells": ["15/9-F-14"],
             "load_params": {
                 "data_path":  DATA_DIR / "volve" / "Volve_Equinor.csv",
                 "serie_name": "BORE_OIL_VOL",
@@ -88,7 +89,8 @@ def get_data_sources(opsd_type: str = "wind") -> list[dict]:
         # --- UNISIM_IV ---
         {
             "name": "UNISIM_IV",
-            "wells": ["P11"],
+            "wells": ["P11, P12, P13, P14, P15, P16"],
+            "wells": ["P13"],
             "load_params": {
                 "data_path": DATA_DIR / "UNISIM-IV-2026" / "Well_{well}_UNISIM-IV.csv",
                 "serie_name": "BORE_OIL_VOL",
@@ -141,9 +143,44 @@ def get_data_sources(opsd_type: str = "wind") -> list[dict]:
         },
     ]
 
-# --- Compatibility Bridge (Intermediate Step) ---
-# To ensure that other parts of the code that use `from ... import DATA_SOURCES`
-# continue to work, we create the variable by calling our new function.
-# The default behavior of the old code was to use 'wind', so we keep that.
+# --- Filtering utilities ---
+
+def filter_data_sources_by_name(
+    data_sources: List[Dict[str, Any]],
+    dataset_name: str
+) -> List[Dict[str, Any]]:
+    """Filter data sources by dataset name (case-insensitive)."""
+    return [ds for ds in data_sources if ds["name"].lower() == dataset_name.lower()]
+
+
+def filter_data_sources_by_well(
+    data_sources: List[Dict[str, Any]],
+    well_name: str
+) -> List[Dict[str, Any]]:
+    """Filter data sources to only those containing a specific well."""
+    return [
+        ds for ds in data_sources
+        if any(well.lower() == well_name.lower() for well in ds.get("wells", []))
+    ]
+
+
+def filter_data_sources(
+    data_sources: List[Dict[str, Any]],
+    dataset_name: Optional[str] = None,
+    well_name: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Filter data sources by dataset name and/or well name.
+    Both filters are optional.
+    """
+    filtered = data_sources
+    if dataset_name:
+        filtered = filter_data_sources_by_name(filtered, dataset_name)
+    if well_name:
+        filtered = filter_data_sources_by_well(filtered, well_name)
+    return filtered
+
+
+# --- Default export for backwards compatibility ---
 DATA_SOURCES = get_data_sources(opsd_type="wind")
 

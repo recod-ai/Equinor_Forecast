@@ -1,0 +1,7 @@
+status,job_hash,well,experiment_id,output_path,val_smape_agg,val_smape_cum
+success,53c319f84bfc992a36e8b7001667da51,P11,job_2c6f42bdd0,/home/gabriel/Documentos/Equinor/src/experiment_configs/results/validation_volve/results/53c319f84bfc992a36e8b7001667da51.json,4.9904573296865,0.0682276650173791
+success,e628b0e373f2d09fb0f9d8e2543dba72,P12,job_ff512c0dcb,/home/gabriel/Documentos/Equinor/src/experiment_configs/results/validation_volve/results/e628b0e373f2d09fb0f9d8e2543dba72.json,4.866217671353909,0.11933607262146456
+success,b8e5f82f5e25ace956aca7a454795a7e,P13,job_db9d1acf4e,/home/gabriel/Documentos/Equinor/src/experiment_configs/results/validation_volve/results/b8e5f82f5e25ace956aca7a454795a7e.json,5.196200301286312,0.13591087141043892
+success,0fdc145ae42d3ec4233f5bb394f1c1fa,P14,job_ac3a27d17e,/home/gabriel/Documentos/Equinor/src/experiment_configs/results/validation_volve/results/0fdc145ae42d3ec4233f5bb394f1c1fa.json,5.648075347130242,0.059709168753902475
+success,9f9d65b8e494a71347dc0405275fb5f6,P15,job_b7abbc2a1b,/home/gabriel/Documentos/Equinor/src/experiment_configs/results/validation_volve/results/9f9d65b8e494a71347dc0405275fb5f6.json,6.189351466457681,0.2146228791692615
+success,c6481028b927abf6211c32b291478705,P16,job_566afbbf20,/home/gabriel/Documentos/Equinor/src/experiment_configs/results/validation_volve/results/c6481028b927abf6211c32b291478705.json,6.5573745792744,0.23168373414222473

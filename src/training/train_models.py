@@ -511,6 +511,22 @@ def _get_lr_schedule_cosine_restarts(
     return WarmUpSchedule(initial_lr, cosine_decay_restarts, warmup_steps)
 
 
+def final_loss():
+    def _loss(y_true, y_pred):
+        # weighted MAE
+        H = tf.shape(y_true)[1]
+        idx = tf.cast(tf.range(H), tf.float32)
+        w   = tf.pow(0.995, idx); w = w / (tf.reduce_mean(w)+1e-8); w = tf.reshape(w, [1,H])
+        mae = tf.reduce_mean(tf.abs(y_true - y_pred) * w)
+
+        # suavidade (1ª e 2ª derivadas)
+        dy  = y_pred[:, 1:] - y_pred[:, :-1]
+        d2  = dy[:, 1:] - dy[:, :-1]
+        reg = 0.02*tf.reduce_mean(tf.abs(dy)) + 0.05*tf.reduce_mean(tf.abs(d2))
+        return mae + reg
+    return _loss
+
+
 def _compile_model(
     model: tf.keras.Model,
     lr_schedule: tf.keras.optimizers.schedules.LearningRateSchedule,
@@ -525,14 +541,7 @@ def _compile_model(
     else:
         optimizer = tf.keras.optimizers.experimental.AdamW(
             learning_rate=lr_schedule, weight_decay=weight_decay, clipnorm=1.0, clipvalue=0.5
-        )
-
-    training_losses = {
-        "out": tf.keras.losses.MeanAbsoluteError(),
-        "q_phys": tf.keras.losses.MeanAbsoluteError(),
-        "residual": tf.keras.losses.MeanAbsoluteError()
-    }
-    
+        )    
 
     model.compile(
         optimizer=optimizer,
@@ -818,7 +827,7 @@ def _train_individual_block(
     optimizer_type: str,
     initial_lr: float,
     weight_decay: float,
-    checkpoint_path: str
+    checkpoint_path: str,
 ) -> tf.keras.Model:
     """
     Train a single block of the hybrid model (Trend or Physics).
@@ -827,7 +836,7 @@ def _train_individual_block(
         **model_args,
         freeze_trend=freeze_trend,
         freeze_physics=freeze_physics,
-        fusion_type=fusion_type
+        fusion_type=fusion_type,
     )
     model, _ = train_modern(
         model=model,
@@ -849,7 +858,7 @@ def _train_individual_block(
 def _assemble_fusion_model(
     model_args: dict,
     trend_model: tf.keras.Model,
-    physics_model: tf.keras.Model
+    physics_model: tf.keras.Model,
 ) -> tf.keras.Model:
     """
     Create a fusion model and load pretrained block weights.
@@ -876,7 +885,9 @@ def train_hybrid_staged(
     optimizer_type: str,
     initial_lr: float,
     weight_decay: float,
-    checkpoint_path: str
+    checkpoint_path: str,
+    scaler_X: Any,
+    scaler_target: Any
 ) -> Tuple[tf.keras.Model, dict]:
     """
     Stage-wise training for hybrid models combining Trend and Physics blocks:
@@ -902,7 +913,7 @@ def train_hybrid_staged(
         optimizer_type=optimizer_type,
         initial_lr=initial_lr,
         weight_decay=weight_decay,
-        checkpoint_path='trend_only.keras'
+        checkpoint_path='trend_only.keras',
     )
 
     # Stage 2: Physics block
@@ -922,14 +933,14 @@ def train_hybrid_staged(
         optimizer_type=optimizer_type,
         initial_lr=initial_lr,
         weight_decay=weight_decay,
-        checkpoint_path='pin_only.keras'
+        checkpoint_path='pin_only.keras',
     )
 
     # Stage 3: Fusion layer training
     logging.info(">>> STAGE 3: Training FUSION Block")
     fusion_args = {**model_args, 'freeze_trend': True, 'freeze_physics': True}
     fusion_model = _assemble_fusion_model(fusion_args, trend_model, physics_model)
-    fusion_model, _ = train_modern(
+    fusion_model, history = train_modern(
         model=fusion_model,
         X=X_train,
         y=y_train,
@@ -945,25 +956,25 @@ def train_hybrid_staged(
     )
 
     # Stage 4: Fine-tuning all layers
-    logging.info(">>> STAGE 4: Fine-tuning all layers")
-    fusion_model.get_layer('trend_block').trainable = True
-    fusion_model.get_layer('physics_block').trainable = True
-    fusion_model, history = train_modern(
-        model=fusion_model,
-        X=X_train,
-        y=y_train,
-        X_val=X_val, 
-        y_val=y_val,
-        epochs=epochs,
-        batch_size=batch_size,
-        patience=patience,
-        optimizer_type=optimizer_type,
-        initial_lr=initial_lr,
-        weight_decay=weight_decay,
-        checkpoint_path=checkpoint_path
-    )
+    # logging.info(">>> STAGE 4: Fine-tuning all layers")
+    # fusion_model.get_layer('trend_block').trainable = True
+    # fusion_model.get_layer('physics_block').trainable = True
+    # fusion_model, history = train_modern(
+    #     model=fusion_model,
+    #     X=X_train,
+    #     y=y_train,
+    #     X_val=X_val, 
+    #     y_val=y_val,
+    #     epochs=epochs,
+    #     batch_size=batch_size,
+    #     patience=patience,
+    #     optimizer_type=optimizer_type,
+    #     initial_lr=initial_lr,
+    #     weight_decay=weight_decay,
+    #     checkpoint_path=checkpoint_path
+    # )
 
-    return fusion_model, history
+    return fusion_model, None
 
 def train_hybrid_three_stages(
     X, y,
@@ -977,7 +988,9 @@ def train_hybrid_three_stages(
     initial_lr:float,
     val_split: float = 0.1,
     cycles: int = 5,
-    use_mixed_precision: bool = True
+    use_mixed_precision: bool = True,
+    scaler_X: Any = None,
+    scaler_target: Any = None
 ) -> Tuple[tf.keras.Model, dict]:
     # ——————————————————————————————————————————
     # 1) monta o modelo “dict” com cabeça de extrator
@@ -985,7 +998,9 @@ def train_hybrid_three_stages(
     model = create_model(
         **build_kwargs,
         output_mode='dict',
-        add_extractor_head=True
+        add_extractor_head=True,
+        scaler_X=scaler_X,
+        scaler_target=scaler_target
     )
 
     # garante pasta de checkpoints
@@ -1108,7 +1123,6 @@ def train_hybrid_three_stages(
 
     return inference_model, histories
 
-from forecast_pipeline.config import DEFAULT_DATASET
 def train_model(
     model: tf.keras.Model,
     X_train: Union[np.ndarray, List[np.ndarray]],
@@ -1128,7 +1142,9 @@ def train_model(
     architecture_name: Optional[str] = None,
     strategy_config: Optional[Dict] = None,
     extractor_config: Optional[Dict] = None,
-    fuser_config: Optional[Dict] = None
+    fuser_config: Optional[Dict] = None,
+    scaler_X: Any = None,
+    scaler_target: Any = None,
 ) -> Tuple[tf.keras.Model, dict]:
     """
     Train the model using traditional, GradientTape, or hybrid staged strategies.
@@ -1146,10 +1162,12 @@ def train_model(
     model_args = {
         "input_shape": X_train.shape[1:], # Use the shape tuple here too for consistency
         "horizon": y_train.shape[1],
-        "strategy_config": strategy_config, # <-- Use the argument
-        "extractor_config": extractor_config, # <-- Use the argument
-        "fuser_config": fuser_config, # <-- Use the argument
+        "strategy_config": strategy_config, 
+        "extractor_config": extractor_config, 
+        "fuser_config": fuser_config, 
         "architecture_name": architecture_name,
+        "scaler_X": scaler_X,
+        "scaler_target": scaler_target
     }
 
     
@@ -1166,7 +1184,9 @@ def train_model(
             optimizer_type,
             initial_lr,
             weight_decay,
-            checkpoint_path
+            checkpoint_path,
+            scaler_X=scaler_X,
+            scaler_target=scaler_target            
         )
 
     if architecture_name == "Seq2Fuser":
@@ -1177,7 +1197,9 @@ def train_model(
             "strategy_config": model.strategy_config,
             "architecture_name": architecture_name,
             "fuser_config": model.fuser_config,
-            "extractor_config": model.extractor_config
+            "extractor_config": model.extractor_config,
+            "scaler_X": scaler_X,
+            "scaler_target": scaler_target
         }
 
         return train_hybrid_three_stages(
@@ -1224,6 +1246,17 @@ def main_train_model(
     strategy_config = train_kwargs.get('strategy_config')
     extractor_config = train_kwargs.get('extractor_config')
     fuser_config = train_kwargs.get('fuser_config')
+
+    dataset_name = train_kwargs.get('dataset_name')
+    
+    if strategy_config and dataset_name:
+        strategy_config['dataset_name'] = dataset_name
+
+    # Unpack the scaler objects from the train_kwargs dictionary.
+    scaler_X = train_kwargs.get('scaler_X')
+    scaler_target = train_kwargs.get('scaler_target')
+    if scaler_X is None or scaler_target is None:
+        raise ValueError("Scalers were not found in train_kwargs. They must be added during data preparation.")
     
     X_train = train_kwargs['X_train']
     y_train = train_kwargs['y_train']
@@ -1237,6 +1270,8 @@ def main_train_model(
     model_creation_args = {
         "input_shape": input_shape_tuple,
         "architecture_name": architecture_name,
+        "scaler_X": scaler_X,
+        "scaler_target": scaler_target,
     }
     
     SEQ2SEQ_ARCHS = ["Seq2Context", "Seq2PIN", "Seq2Trend", "Seq2Fuser"]
@@ -1264,5 +1299,7 @@ def main_train_model(
         architecture_name=architecture_name,
         strategy_config=strategy_config,
         extractor_config=extractor_config,
-        fuser_config=fuser_config
+        fuser_config=fuser_config,
+        scaler_X=scaler_X,
+        scaler_target=scaler_target,
     )

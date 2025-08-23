@@ -1,32 +1,56 @@
-from itertools import product
-from typing import Dict, Any, List, Tuple
-
-
-import logging 
-from itertools import product 
-from typing import List, Dict, Any, Optional, Tuple
-from pathlib import Path
-
-from .config import (SEQ2SEQ_ARCHS, STRATEGY_OPTIONS, EXTRACTOR_OPTIONS, FUSER_OPTIONS, EXPERIMENT_CONFIGURATIONS)
+# ─── Future imports ─────────────────────────────────────────────────────────────
+from __future__ import annotations
 
 # ─── Standard library imports ────────────────────────────────────────────────────
 import gc                                          # garbage collection
 import logging                                     # logging utilities
 import math                                        # math functions
+from dataclasses import dataclass
+import os
+from itertools import product
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union, Literal
 
 # ─── Third-party imports ─────────────────────────────────────────────────────────
+import matplotlib.pyplot as plt
 import numpy as np                                 # array computing
 import pandas as pd
-import matplotlib.pyplot as plt
+from box import Box
 
 # ─── Local application imports ───────────────────────────────────────────────────
+from .config import (
+    DEFAULT_EXP_PARAMS,
+    EXPERIMENT_CONFIGURATIONS,
+    EXTRACTOR_OPTIONS,
+    FUSER_OPTIONS,
+    SEQ2SEQ_ARCHS,
+    STRATEGY_OPTIONS,
+    get_experiment_base_config,
+)
 from .experiments.seq2context import ExperimentSeq2Context
 from .experiments.seq2value import ExperimentSeq2Value
-from training.train_models import main_train_model
-from training.train_utils import train_predict_chunk, analyze_contributions
-from .config import DEFAULT_EXP_PARAMS
+from .plotting import plot_integrated_view
 
 from common.seq_preprocessing import reconstruct_true_series
+
+from evaluation.evaluation import (
+    evaluate,                     # r2, smape, mae
+    evaluate_model,               # legacy point-forecast path
+    evaluate_model_seq,           # legacy seq2seq aggregated path
+    evaluate_cumulative,          # legacy point cumulative
+    evaluate_cumulative_seq,      # legacy seq2seq cumulative
+    compute_metrics_to_df,        # legacy tabular metrics (point)
+    compute_metrics_to_df_seq,    # legacy tabular metrics (seq)
+    evaluate_and_plot,            # legacy plotting
+)
+
+from forecast_pipeline.analytics import scenario_curve
+from forecast_pipeline.ensemble_output import EnsembleOutput, to_ensemble_output
+from forecast_pipeline.plotting import plot_predictions_wrapper
+
+from training.train_models import main_train_model
+from training.train_utils import analyze_contributions, train_predict_chunk
+
 
 
 def _legacy_generate_jobs(
@@ -60,62 +84,141 @@ def _legacy_generate_jobs(
                             exp_id += 1
     return jobs
 
+from common.config_wells import get_data_sources
 
 def generate_jobs(
     data_sources: List[Dict[str, Any]],
-    default_exp_params: Dict[str, Any],
+    config_or_defaults: Union[Box, Dict[str, Any]],
     profile_path: Optional[str] = None
 ) -> List[Tuple[Dict[str, Any], str, Dict[str, Any], str]]:
     """
-    Generates a list of experiment jobs to be executed.
-    
-    If a `profile_path` is provided, it loads experiments from the profile file.
-    Otherwise, it falls back to the legacy Cartesian product generation.
+    Generates experiment jobs with full backward compatibility, now correctly
+    sourcing rule-based parameters like 'selected_features' for all workflows.
     """
-    # --- Path A: New Profile-Driven Logic ---
+
+    # --- Check for Rich Profile ---
+    try:
+        profile_df = pd.read_csv(profile_path)
+        is_rich_profile = 'well' in profile_df.columns and 'dataset' in profile_df.columns
+    except (FileNotFoundError, Exception):
+        # If we can't read it or it's not a CSV, assume it's not a rich profile.
+        is_rich_profile = False
+
+    # ==========================================================================
+    # --- Path D: NEW "Rich Profile" Execution Path ---
+    # ==========================================================================
+    if is_rich_profile:
+
+        from profile_manager import load_and_expand_profile # Import the magic function
+        
+        expanded_profile_configs = load_and_expand_profile(profile_path)
+        
+        logging.info("Detected 'rich' validation profile. Generating one job per row.")
+        jobs = []
+        all_data_sources = get_data_sources()
+        
+        for index, trial_config in enumerate(expanded_profile_configs):
+            target_dataset = trial_config['dataset']
+            target_well = trial_config['well']
+            
+            ds_config_full = next((ds for ds in all_data_sources if ds['name'] == target_dataset), None)
+            if not ds_config_full:
+                logging.warning(f"Dataset '{target_dataset}' from profile row {index} not found. Skipping.")
+                continue
+
+            # --- THE ADAPTER FIX ---
+            if target_dataset == 'VOLVE' and isinstance(target_well, str):
+                target_well = target_well.replace("-", "/", 1)
+
+            # Create a shallow copy of the data source config...
+            ds_config_for_job = ds_config_full.copy()
+            ds_config_for_job['wells'] = [target_well]
+
+            config = config_or_defaults
+            arch_name = trial_config.get('architecture_name')
+            
+            base_config = get_experiment_base_config(target_dataset, arch_name)
+            
+            final_params = {
+                **config.job_defaults.to_dict(),
+                **base_config,
+                **trial_config
+            }
+            final_params['ensemble_models'] = config.run_params.ensemble_size
+            exp_id = final_params.get("experiment_id", f"validation_trial_{index}")
+            # Pass the correctly SCOPED config to the job tuple.
+            jobs.append((ds_config_for_job, target_well, final_params, exp_id))
+
+        print('final_params', final_params)
+        logging.info(f"Successfully generated {len(jobs)} specific jobs from rich profile.")
+        return jobs
+    
+    # --- Path A & B: Profile-Driven Logic ---
     if profile_path:
         logging.info(f"Loading experiment configurations from profile: {profile_path}")
-        # Import locally to prevent potential circular dependency issues.
         from profile_manager import load_and_expand_profile 
-        
-        # This function does all the heavy lifting we tested in the notebook.
         profile_configs = load_and_expand_profile(profile_path)
         
         jobs = []
         for ds in data_sources:
             ds_name = ds["name"]
             
-            # 2. Get the "base" configuration for this data source (e.g., the feature list).
-            base_configs = EXPERIMENT_CONFIGURATIONS.get(ds_name, [])
-            if not base_configs:
-                logging.warning(f"No base configurations in EXPERIMENT_CONFIGURATIONS for data source '{ds_name}'. Skipping.")
-                continue
-            # In most cases, there's only one base config per data source (e.g., one feature list).
-            base_config = base_configs[0]
-    
+            # --- This logic adapts based on the workflow ---
+            # Path A: New, Config-Driven Workflow
+            if isinstance(config_or_defaults, Box):
+                config = config_or_defaults # Rename for clarity
+                
+                # Get high-level parameters from the YAML config
+                job_defaults = config.job_defaults.to_dict()
+                job_defaults['ensemble_models'] = config.run_params.ensemble_size
+                
+                # Call our new function to get the rule-based config (e.g., features)
+                architecture_name = config.job_defaults.architecture_name
+                base_config = get_experiment_base_config(ds_name, architecture_name)
+
+            # Path B: Old Profile-Driven Workflow
+            else:
+                job_defaults = config_or_defaults # The dict is the defaults.
+                
+                # The old workflow gets its base config from the global dictionary
+                legacy_base_configs = EXPERIMENT_CONFIGURATIONS.get(ds_name, [])
+                if not legacy_base_configs:
+                    logging.warning(f"[Legacy Mode] No base configs for '{ds_name}'. Skipping.")
+                    continue
+                base_config = legacy_base_configs[0]
+            
+            # The rest of the loop is the same for both Path A and B
             for well in ds.get("wells", []):
                 for profile_config in profile_configs:
+                    # The definitive merge order
                     final_params = {
-                        **default_exp_params, 
+                        **job_defaults,
                         **base_config,
                         **profile_config
                     }
-                    
                     exp_id = final_params.get("experiment_id", "unknown_id")
                     jobs.append((ds, well, final_params, exp_id))
-        
-        logging.info(f"Generated {len(jobs)} jobs from profile ({len(profile_configs)} configs x {len(data_sources)*len(ds.get('wells',[]))} wells).")
+
+        num_wells_total = sum(len(ds.get('wells', [])) for ds in data_sources)
+        logging.info(f"Generated {len(jobs)} jobs from profile ({len(profile_configs)} configs x {num_wells_total} wells).")
         return jobs
-    # --- Path B: Legacy Fallback Logic ---
+        
+    # --- Path C: Legacy Cartesian Product Fallback ---
     else:
         logging.warning("No profile path provided. Falling back to legacy job generation.")
-        # Note: The old function returns an integer ID, but the new one returns a string.
-        # This is a minor type difference that the rest of the pipeline should handle gracefully.
-        # We can cast it to a string for consistency if needed.
+        
+        # We need to ensure we're passing a dictionary to the legacy function.
+        if isinstance(config_or_defaults, Box):
+            # If we're in the new system but somehow ended up here, construct the dict.
+            default_exp_params = {
+                **config_or_defaults.job_defaults.to_dict(),
+                "ensemble_models": config_or_defaults.run_params.ensemble_size
+            }
+        else:
+            # If in the old system, just use the dict as is.
+            default_exp_params = config_or_defaults
         legacy_jobs = _legacy_generate_jobs(data_sources, default_exp_params)
-        # Convert integer job_id to string for type consistency
         return [(ds, well, params, str(job_id)) for ds, well, params, job_id in legacy_jobs]
-
 
 def prepare_job_data(job):
     """
@@ -140,12 +243,17 @@ def prepare_job_data(job):
         raise ValueError(f"Unknown architecture: {arch}")
 
     exp = exp_cls(ds, well, params, job_id)
-    train_kwargs, prediction_input, y_test, scaler_target, y_train_original = exp.load_and_prepare()
+    train_kwargs, prediction_input, y_test, scaler_X, scaler_target, y_train_original = exp.load_and_prepare()
+
+    train_kwargs['scaler_X'] = scaler_X
+    train_kwargs['scaler_target'] = scaler_target
+    train_kwargs['dataset_name'] = ds['name']
 
     return (
         train_kwargs,
         prediction_input,
         y_test,
+        scaler_X,
         scaler_target,
         y_train_original,
         params,
@@ -295,259 +403,6 @@ def process_chunks(
 
     logging.info("← process_chunks complete, returning test and validation predictions")
     return out_dict
-
-
-from forecast_pipeline.ensemble_output import to_ensemble_output, EnsembleOutput
-from forecast_pipeline.analytics import scenario_curve
-from forecast_pipeline.plotting import plot_predictions_wrapper
-
-from evaluation.evaluation import (
-    evaluate_model, evaluate_cumulative, compute_metrics_to_df,
-    evaluate_model_seq, evaluate_cumulative_seq, compute_metrics_to_df_seq, evaluate
-)
-
-
-# -------------------------------------------------------------
-# evaluate_job refatorado
-# -------------------------------------------------------------
-
-# def evaluate_job(
-#     y_test_scaled: np.ndarray,
-#     y_test_pred:  np.ndarray,
-#     y_val_scaled: np.ndarray,
-#     y_val_pred:   np.ndarray,
-#     scaler_target,
-#     y_train_original: np.ndarray,
-#     params: Dict[str, Any],
-#     config: Dict[str, Any],
-#     well: str,
-#     plot: bool = True,
-#     *,
-#     ensemble_out: Optional["EnsembleOutput"] = None,
-# ) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Any],
-#            pd.DataFrame, pd.DataFrame, Dict[str, Any]]:
-#     """Avalia e plota, devolvendo métricas para Teste e Validação."""
-
-#     # -------- tags comuns p/ DataFrames e global_metrics -------------
-#     base_tags = {
-#         "Method":    params["architecture_name"],
-#         "Well":      well,
-#         "strategy":  params["strategy_config"]["strategy_name"],
-#         "extractor": params["extractor_config"]["type"],
-#         "fuser":     params["fuser_config"]["type"],
-#     }
-
-#     arch  = params["architecture_name"]
-#     if arch == "Seq2Context":
-#         label = (
-#             f"Well {well} │ PINN: "
-#             f"{base_tags['strategy'].replace('_',' ').title()} │ <br> "
-#             f"Data-Driven: {base_tags['extractor'].upper()} & {base_tags['fuser'].capitalize()}"
-#         )
-#     elif arch == "Seq2PIN":
-#         label = (
-#             f"Well {well} │ PINN: "
-#             f"{base_tags['strategy'].replace('_',' ').title()} "
-#         )
-#     elif arch == "Seq2Trend":
-#         label = (
-#             f"Well {well} │ PINN + Trend: "
-#             f"{base_tags['strategy'].replace('_',' ').title()} "
-#         )
-#     else:
-#         label = (
-#             f"Well {well} │ NONE: "
-#             f"{base_tags['strategy'].replace('_',' ').title()} "
-#         )
-        
-
-#     # ------------------------- PLOT HELPER ----------------------------
-#     def _plot_seq(
-#         truth: np.ndarray,
-#         pred:  np.ndarray,
-#         title_suffix: str,
-#         *,
-#         is_cum: bool = False,
-#         window_size: int | None = None,
-#         steps: int | None = None,
-#         pct_split: float | None = None,
-#         split: str = "test"
-#     ) -> None:
-#         """Encapsula toda a lógica de plot (novo ou legado)."""
-#         if not plot:
-#             return
-
-#         # --- métricas rápidas p/ anotar ------------------------------
-#         r2, smape, mae = evaluate(truth, pred)
-
-#         # -------------------------------------------------------------
-#         # Decide de onde vem µ e σ   (test  vs  val)
-#         # -------------------------------------------------------------
-#         if split == "val":
-#             mu_stack   = ensemble_out.pred_val
-#             sigma_stack = ensemble_out.sigma_val
-#         else:                             # default = "test"
-#             mu_stack   = ensemble_out.pred_test
-#             sigma_stack = ensemble_out.sigma_test
-
-#         # --- novo plot probabilístico (se ensemble_out passado) ------
-#         if ensemble_out is not None:
-#             kind = params.get("__plot_kind__", "P50")
-#             band = params.get("band")
-#             show_comp = params.get("show_components", False)
-
-#             # monta kwargs comuns (legenda, métricas…)
-#             common_kw = dict(
-#                 scaler=scaler_target,
-#                 smape=smape, mae=mae,
-#                 window_size=window_size, forecast_steps=steps,
-#                 percentage_split=pct_split,
-#                 show_components=show_comp,
-#                 title=label,
-#             )
-
-#             # ---------------------------------------------------------
-#             # Calcula on-the-fly
-#             # ---------------------------------------------------------
-#             manual_env: Optional[Tuple[np.ndarray, np.ndarray]] = None
-#             if is_cum and band and sigma_stack is not None:
-#                 # ------------------------------------------------------------------
-#                 # 1) converte (B,H) ➜ série longa (L,) p/ µ e σ
-#                 # ------------------------------------------------------------------
-#                 mu_rate  = reconstruct_true_series(mu_stack)      # (L,)
-#                 sig_rate = reconstruct_true_series(sigma_stack)   # (L,)
-            
-#                 # 2) desscala:    µ  = shift+scale     σ = somente scale
-#                 mu_rate_phys = scaler_target.inverse_transform(mu_rate.reshape(-1, 1)).ravel()
-            
-#                 scale = getattr(scaler_target, "scale_", [1.0])[0]   # Safe fallback
-#                 sig_rate_phys = sig_rate * scale                     # sem shift!
-            
-#                 # 3) curva P10/P90 por passo
-#                 plo, phi = band
-#                 low_rate  = scenario_curve(mu_rate_phys, sig_rate_phys, plo)
-#                 high_rate = scenario_curve(mu_rate_phys, sig_rate_phys, phi)
-            
-#                 # 4) acumula e alinha ao primeiro ponto da série cumulativa
-#                 adj = truth[0] - mu_rate_phys[0]
-#                 low_cum  = np.cumsum(low_rate)  + adj
-#                 high_cum = np.cumsum(high_rate) + adj
-#                 manual_env = (low_cum, high_cum)
-
-#             # wrapper decide o resto
-#             plot_predictions_wrapper(
-#                 ensemble_out,
-#                 truth=truth,
-#                 kind=kind,
-#                 well=well,
-#                 band=band,
-#                 mean_override=pred if not is_cum else pred,  # mantém curva média
-#                 manual_envelope=manual_env,
-#                 is_cum = is_cum,
-#                 **common_kw,
-#             )
-#         # --- fallback legado ----------------------------------------
-#         else:
-#             from evaluation.evaluation import evaluate_and_plot
-#             evaluate_and_plot(
-#                 y_true=truth,
-#                 y_pred=pred,
-#                 title=f"{label} – {title_suffix}",
-#                 well=well,
-#                 set_name=title_suffix,
-#                 additional_params=dict(
-#                     window_size=window_size,
-#                     forecast_steps=steps,
-#                     percentage_split=pct_split,
-#                 ),
-#             )
-
-#     # ======================= AVA. SEQ-TO-SEQ =========================
-#     def _eval_seq(y_true, y_pred, y_train, split):
-#         res = evaluate_model_seq(
-#             y_true, y_pred, scaler_target,
-#             params["lag_window"], params["horizon"],
-#             1 - params["test_size"], config,
-#             eval_title="Seq-to-Seq", set_name=label,
-#             aggregation_method=params.get("aggregation_method"),
-#             quantiles=params.get("aggregation_quantiles"),
-#             plot=False,
-#         )
-#         agg_y, agg_pred, gm = res["agg_y_test"], res["agg_y_pred"], res["global_metrics"]
-
-#         # ---------- plots (já implementados) -------------------------
-#         _plot_seq(agg_y, agg_pred, "Aggregated",
-#                   window_size=params["lag_window"], steps=params["horizon"],
-#                   pct_split=1 - params["test_size"], is_cum=False, split=split)
-
-#         cum = evaluate_cumulative_seq(
-#             agg_y, agg_pred, y_train, scaler_target,
-#             params["lag_window"], params["horizon"],
-#             config, plot=False,
-#         )
-#         _plot_seq(cum["y_test_cumsum"], cum["y_pred_cumsum"], "Cumulative",
-#                   window_size=params["lag_window"], steps=params["horizon"],
-#                   pct_split=None, is_cum=True, split=split)
-
-#         # ---------- DataFrames com tags ------------------------------
-#         df_agg = pd.DataFrame([
-#             compute_metrics_to_df_seq(agg_y, agg_pred, well, arch, "Aggregated")
-#         ]).assign(**base_tags)
-#         df_agg["Kind"] = "Aggregated_Window"
-
-#         df_cum = pd.DataFrame([
-#             compute_metrics_to_df_seq(cum["y_test_cumsum"], cum["y_pred_cumsum"], well, arch, "Cumulative")
-#         ]).assign(**base_tags)
-#         df_cum["Kind"] = "Cumulative_Sum"
-
-#         gm_full = {**base_tags, **gm, "Category": "Global", "Kind": "Overall"}
-#         return df_agg, df_cum, gm_full
-
-#     # ======================= AVA. SEQ-TO-VALUE =======================
-#     def _eval_value(y_true, y_pred, y_train, split):
-#         r2, smape, mae = evaluate_model(
-#             y_true, y_pred, scaler_target,
-#             params["lag_window"], params["horizon"],
-#             1 - params["test_size"], config,
-#             eval_title="", set_name=label,
-#         )
-#         _plot_seq(y_true, y_pred, "Point Forecast",
-#                   window_size=params["lag_window"], steps=params["horizon"],
-#                   pct_split=1 - params["test_size"], is_cum=False, split=split)
-
-#         y_inv_cum, y_pred_inv_cum = evaluate_cumulative(
-#             y_true, y_pred, y_train,
-#             params["lag_window"], params["horizon"],
-#             config, set_name=label,
-#         )
-#         _plot_seq(y_inv_cum, y_pred_inv_cum, "Cumulative",
-#                   window_size=params["lag_window"], steps=params["horizon"],
-#                   pct_split=None, is_cum=True, split=split)
-
-#         df_reg = pd.DataFrame([
-#             compute_metrics_to_df(y_true, y_pred, well, arch, "Series")
-#         ]).assign(**base_tags)
-#         df_cum = pd.DataFrame([
-#             compute_metrics_to_df(y_inv_cum, y_pred_inv_cum, well, arch, "Series")
-#         ]).assign(**base_tags)
-
-#         gm_full = {**base_tags, "R²": r2, "SMAPE": smape, "MAE": mae,
-#                    "Category": "Global", "Kind": "Overall"}
-#         return df_reg, df_cum, gm_full
-
-#     # ======================= DISPATCHER ==============================
-#     if arch in SEQ2SEQ_ARCHS:
-#         agg_test, cum_test, gm_test = _eval_seq(y_test_scaled, y_test_pred, y_train_original, split="test")
-#         agg_val,  cum_val,  gm_val  = _eval_seq(y_val_scaled,  y_val_pred,  y_train_original, split="val")
-#     else:
-#         agg_test, cum_test, gm_test = _eval_value(y_test_scaled, y_test_pred, y_train_original, split="test")
-#         agg_val,  cum_val,  gm_val  = _eval_value(y_val_scaled,  y_val_pred,  y_train_original, split="val")
-
-#     return agg_test, cum_test, gm_test, agg_val, cum_val, gm_val
-
-
-# NEW: Add this import to bring in the new plotting function
-from .plotting import plot_integrated_view
 
 
 def evaluate_job(
@@ -765,70 +620,100 @@ def evaluate_job(
         """Assembles data and calls the new integrated plot functions."""
         if not plot:
             return
+    
+        import numpy as np
+        from common.seq_preprocessing import reconstruct_true_series
+    
+        # 1) Extrai séries já desscaladas / reconstruídas vindas do evaluate_model_seq
+        y_val_pred_unscaled   = res_val["agg_y_pred"]         # (338,)
+        y_test_pred_unscaled  = res_test["agg_y_pred"]        # (563,)
+        y_val_actual_unscaled = res_val["agg_y_test"]         # (338,)
+        y_test_actual_unscaled= res_test["agg_y_test"]        # (563,)
+    
+        # 2) RECONSTRÓI o TREINO corretamente (não usar [:, -1])
+        y_train_actual_unscaled = reconstruct_true_series(y_train_original) 
+    
+        # --- DEBUG --------------------------------------------------------
+        H = int(y_train_original.shape[1])
+        expected_train_len = y_train_original.shape[0] + H - 1
+        logging.info(f'[DBG] H = {H}')
+        logging.info(f'y_train_original shape: {y_train_original.shape}')              # (225, 300)
+        logging.info(f'expected train len    : {expected_train_len}')                  # 524
+        logging.info(f'y_train_actual len    : {len(y_train_actual_unscaled)}')        # 524
+        logging.info(f'y_val_actual_unscaled shape: {y_val_actual_unscaled.shape}')    # (338,)
+        logging.info(f'y_val_pred_unscaled   shape: {y_val_pred_unscaled.shape}')      # (338,)
+        logging.info(f'y_test_actual_unscaled shape: {y_test_actual_unscaled.shape}')  # (563,)
+        logging.info(f'y_test_pred_unscaled   shape: {y_test_pred_unscaled.shape}')    # (563,)
 
-        # 1. Extract unscaled predictions and ground truths from the captured results
-        y_val_pred_unscaled = res_val["agg_y_pred"]
-        y_test_pred_unscaled = res_test["agg_y_pred"]
-        y_val_actual_unscaled = res_val["agg_y_test"]
-        y_test_actual_unscaled = res_test["agg_y_test"]
-
-        # 2. Define split boundaries for the full timeline
-        len_train = len(y_train_original)
-        len_val = len(y_val_actual_unscaled)
-        len_test = len(y_test_actual_unscaled)
+    
+        # 3) Comprimentos e splits usando o TREINO RECONSTRUÍDO
+        len_train = len(y_train_actual_unscaled)          # 524
+        len_val   = len(y_val_actual_unscaled)            # 338
+        len_test  = len(y_test_actual_unscaled)           # 563
         total_len = len_train + len_val + len_test
         split_indices = {'train_end': len_train, 'val_end': len_train + len_val}
         x_axis = np.arange(total_len)
+        print('[DBG] split_indices', split_indices, '| total_len', total_len)
+    
+        # 4) Ground truth completa: TREINO RECONSTRUÍDO + VAL + TEST (na sequência)
+        y_actual_full = np.concatenate([
+            y_train_actual_unscaled,
+            y_val_actual_unscaled,
+            y_test_actual_unscaled
+        ])
 
-        # 3. Assemble full ground truth series (Train + Val + Test)
-        print('SHAPE')
-        y_actual_full = np.concatenate([y_train_original[:, -1], y_val_actual_unscaled, y_test_actual_unscaled])
-
-        # 4. Assemble prediction series with NaN padding for plotting gaps
+        # 5) Predições posicionadas por blocos (sem cortes extras)
         y_pred_val_full = np.full(total_len, np.nan)
         y_pred_val_full[split_indices['train_end']:split_indices['val_end']] = y_val_pred_unscaled
+    
         y_pred_test_full = np.full(total_len, np.nan)
         y_pred_test_full[split_indices['val_end']:] = y_test_pred_unscaled
-        
-        # 5. Prepare metrics dictionaries for plot annotations
-        metrics_for_val_plot = {"SMAPE": gm_val.get("SMAPE"), "MAE": gm_val.get("MAE")}
+    
+        # 6) Métricas para anotações
+        metrics_for_val_plot  = {"SMAPE": gm_val.get("SMAPE"),  "MAE": gm_val.get("MAE")}
         metrics_for_test_plot = {"SMAPE": gm_test.get("SMAPE"), "MAE": gm_test.get("MAE")}
-        
-        # 6. --- PLOT 1: Integrated Series View ---
+    
+        # 7) --- PLOT 1: Série ---
         plot_integrated_view(
-            x_axis=x_axis, y_actual=y_actual_full, y_pred_val=y_pred_val_full, y_pred_test=y_pred_test_full,
-            split_indices=split_indices, metrics_val=metrics_for_val_plot, metrics_test=metrics_for_test_plot,
-            title=label, yaxis_title="Rate", well=well
+            x_axis=x_axis,
+            y_actual=y_actual_full,
+            y_pred_val=y_pred_val_full,
+            y_pred_test=y_pred_test_full,
+            split_indices=split_indices,
+            metrics_val=metrics_for_val_plot,
+            metrics_test=metrics_for_test_plot,
+            title=label, yaxis_title="Rate", well=well,
+            horizon = params["horizon"]
         )
-        
-        # 7. Prepare data for the cumulative plot, anchoring predictions correctly
+    
+        # 8) --- PLOT 2: Cumulativo (mesma indexação) ---
         y_actual_full_cum = np.cumsum(y_actual_full)
-        
-        # Anchor validation cumulative sum to the end of the training actuals
+    
         y_pred_val_cum = np.full(total_len, np.nan)
-        val_anchor_point = y_actual_full_cum[split_indices['train_end'] - 1] if len_train > 0 else 0
-        val_pred_cum_segment = val_anchor_point + np.cumsum(y_val_pred_unscaled)
-        y_pred_val_cum[split_indices['train_end']:split_indices['val_end']] = val_pred_cum_segment
-        
-        # Anchor test cumulative sum to the end of the validation actuals
+        val_anchor_point = y_actual_full_cum[split_indices['train_end'] - 1] if len_train > 0 else 0.0
+        y_pred_val_cum[split_indices['train_end']:split_indices['val_end']] = \
+            val_anchor_point + np.cumsum(y_val_pred_unscaled)
+    
         y_pred_test_cum = np.full(total_len, np.nan)
         test_anchor_point = y_actual_full_cum[split_indices['val_end'] - 1] if len_val > 0 else val_anchor_point
-        test_pred_cum_segment = test_anchor_point + np.cumsum(y_test_pred_unscaled)
-        y_pred_test_cum[split_indices['val_end']:] = test_pred_cum_segment
-
-        metrics_cum_val = cum_val[["SMAPE", "MAE"]].iloc[0].to_dict()
+        y_pred_test_cum[split_indices['val_end']:] = \
+            test_anchor_point + np.cumsum(y_test_pred_unscaled)
+    
+        metrics_cum_val  = cum_val[["SMAPE", "MAE"]].iloc[0].to_dict()
         metrics_cum_test = cum_test[["SMAPE", "MAE"]].iloc[0].to_dict()
-
-        # 8. --- PLOT 2: Integrated Cumulative View ---
+    
         plot_integrated_view(
-            x_axis=x_axis, y_actual=y_actual_full_cum, y_pred_val=y_pred_val_cum, y_pred_test=y_pred_test_cum,
-            split_indices=split_indices, 
-            # MODIFICAÇÃO: Passa os dicionários de métricas para o plot
-            metrics_val=metrics_cum_val, 
+            x_axis=x_axis,
+            y_actual=y_actual_full_cum,
+            y_pred_val=y_pred_val_cum,
+            y_pred_test=y_pred_test_cum,
+            split_indices=split_indices,
+            metrics_val=metrics_cum_val,
             metrics_test=metrics_cum_test,
-            title=label, # Este título será atualizado no próximo patch
-            yaxis_title="Cumulative Sum", well=well
+            title=label, yaxis_title="Cumulative Sum", well=well,
+            horizon = params["horizon"]
         )
+
 
     # Final call to the new plotting logic before returning results
     _prepare_and_plot_integrated_view()
@@ -925,104 +810,8 @@ def evaluate_slices(
         slice_agg_val,  slice_cum_val,  slice_glob_val
     )
 
-# def run_single_job(job):
-
-#     """Orquestra um job completo, agora compatível com cenários/ band."""
-#     try:
-#         # 1. preparação -------------------------------------------------
-#         (
-#             train_kwargs, X_test, y_test_scaled, scaler_target,
-#             y_train_original, params, ds, well, job_id
-#         ) = prepare_job_data(job)            # type: ignore
-
-#         params = {**DEFAULT_EXP_PARAMS, **params}   # garante chaves novas
-#         X_val, y_val_scaled = train_kwargs["X_val"], train_kwargs["y_val"]
-#         data_inputs = {"X_test": X_test, "X_val": X_val}
-
-#         # 2. inferência ensemble ---------------------------------------
-#         ensemble_raw = process_chunks(train_kwargs, data_inputs, params, scaler_target)  # type: ignore
-#         ensemble = to_ensemble_output(ensemble_raw)
-
-#         # 2½. curva p/ métricas (P50)  +  cenário p/ visual -------------
-#         plot_kind = params.get("scenario", "P50").upper()
-#         if plot_kind in ("P90", "P10", "BAND") and ensemble.sigma_test is None:
-#             logging.warning("Sigma indisponível; degradando cenário %s para P50", plot_kind)
-#             plot_kind = "P50"
-
-#         params["__plot_kind__"] = plot_kind                # usado no _maybe_plot
-#         final_test_pred = ensemble.pred_test               # métricas sempre na média
-#         final_val_pred  = ensemble.pred_val
-
-#         # 3. avaliação --------------------------------------------------
-#         (
-#             agg_test_df, cum_test_df, gm_test,
-#             agg_val_df,  cum_val_df,  gm_val,
-#         ) = evaluate_job(
-#             y_test_scaled, final_test_pred,
-#             y_val_scaled,  final_val_pred,
-#             scaler_target, y_train_original,
-#             params, ds, well,
-#             plot=params.get("plot", False),
-#             ensemble_out=ensemble,
-#         )
-
-#         # 4. métricas por slice ----------------------------------------
-#         slice_agg_test, slice_cum_test, slice_glob_test = [], [], []
-#         slice_agg_val,  slice_cum_val,  slice_glob_val  = [], [], []
-#         if params.get("evaluate_by_slice", False):
-#             (
-#                 slice_agg_test, slice_cum_test, slice_glob_test,
-#                 slice_agg_val,  slice_cum_val,  slice_glob_val
-#             ) = evaluate_slices(  # type: ignore
-#                 y_test_scaled, final_test_pred,
-#                 y_val_scaled,  final_val_pred,
-#                 scaler_target, y_train_original,
-#                 params, ds, well,
-#             )
-
-#         print("cumulative_metrics_val", cum_val_df,)
-#         print("aggregated_metrics_val", agg_val_df,)
-
-#         # 5. resultado --------------------------------------------------
-#         result = {
-#             "status": "success",
-#             "aggregated_metrics_test": agg_test_df,
-#             "cumulative_metrics_test": cum_test_df,
-#             "global_metrics_test": gm_test,
-#             "aggregated_metrics_val": agg_val_df,
-#             "cumulative_metrics_val": cum_val_df,
-#             "global_metrics_val": gm_val,
-#             "slice_agg_test": slice_agg_test,
-#             "slice_cum_test": slice_cum_test,
-#             "slice_glob_test": slice_glob_test,
-#             "slice_agg_val":  slice_agg_val,
-#             "slice_cum_val":  slice_cum_val,
-#             "slice_glob_val": slice_glob_val,
-#             "well": well,
-#             "experiment_id": job_id,
-#             # "ensemble_outputs": ensemble,
-#         }
-
-#     except Exception as e:
-#         logging.exception("Job failed")
-#         result = {
-#             "status": "failure",
-#             "error": str(e),
-#             "well": job[1],
-#             "experiment_id": job[3],
-#         }
-#     finally:
-#         import gc; gc.collect()
-
-#     return result
-
-
 from profile_manager import generate_job_hash 
 from forecast_pipeline.io_utils import atomic_write_json, build_run_metadata
-
-
-# In src/forecast_pipeline/jobs.py
-
 def normalize_job_parameters(initial_params: Dict[str, Any]) -> Dict[str, Any]:
     """
     Takes a job's parameter dictionary and ensures it has the final,
@@ -1082,7 +871,7 @@ def run_single_job(
     
     try:
         # --- Steps 1 & 2: Your core logic (unchanged) ---
-        (train_kwargs, X_test, y_test_scaled, scaler_target, y_train_original, _, _, _, _) = prepare_job_data(job)
+        (train_kwargs, X_test, y_test_scaled, scaler_X, scaler_target, y_train_original, _, _, _, _) = prepare_job_data(job)
         params = {**DEFAULT_EXP_PARAMS, **params}
         params = normalize_job_parameters(params)
         X_val, y_val_scaled = train_kwargs["X_val"], train_kwargs["y_val"]

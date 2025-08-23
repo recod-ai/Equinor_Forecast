@@ -16,7 +16,7 @@ from typing import List, Dict, Any, Optional
 BASE_DIR: Path = Path(__file__).resolve().parent.parent / "experiments"
 
 # Default dataset
-DEFAULT_DATASET: str = "VOLVE"  # Possible alternatives: "UNISIM_IV", "VOLVE"
+DEFAULT_DATASET: str = "UNISIM_IV"  # Possible alternatives: "UNISIM_IV", "VOLVE"
 
 # =============================================================================
 # II. DEFAULT EXPERIMENT PARAMETERS
@@ -45,14 +45,14 @@ class DefaultExperimentParams:
     architecture_name: str     = ARCH
     feature_kind: str          = "Normal"
     use_known_good: bool       = False
-    data_sample: float         = 0.9
-    lag_window: int            = 30
-    horizon: int               = 30
-    epochs: int                = 20
+    data_sample: float         = 0.25
+    lag_window: int            = 300
+    horizon: int               = 300
+    epochs: int                = 200
+    patience: int              = 50
     batch_size: int            = 16
-    patience: int              = 100
-    learning_rate:float        = 5e-3
-    test_size: float           = 0.5
+    learning_rate:float        = 1e-3
+    test_size: float           = 0.6
     val_size: float            = 0.1
     aggregation_method: str    = "median"
     evaluate_by_slice: bool    = True
@@ -72,7 +72,7 @@ DEFAULT_EXP_PARAMS: Dict[str, Any] = DefaultExperimentParams().__dict__
 # III. LOG LEVEL AND PARALLELISM
 # -------------------------------------------------------------------
 LOG_LEVEL: int    = 1    # 0 → progress bar only; 1 → adds logging.info; 2 → all detailed outputs
-MAX_WORKERS: int  = 1    # Maximum number of workers for parallelism
+MAX_WORKERS: int  = 5    # Maximum number of workers for parallelism
 
 
 # -------------------------------------------------------------------
@@ -94,8 +94,8 @@ else:
     EXTRACTOR_OPTIONS: List[Dict[str, str]] = [
         # {"type": "tcn"},
         # {"type": "rnn"},
-        # {"type": "cnn"},
-        # {"type": "aggregate"},
+        {"type": "cnn"},
+        {"type": "aggregate"},
         {"type": "identity"},
     ]
     FUSER_OPTIONS: List[Dict[str, str]] = [
@@ -282,6 +282,35 @@ EXPERIMENT_CONFIGURATIONS_4: Dict[str, List[Dict[str, Any]]] = {
         {"selected_features": ["GB_GBN_wind_generation_tax", "GB_GBN_wind_generation_actual"]},
     ]
 }
+
+def get_experiment_base_config(dataset_name: str, architecture_name: str) -> Dict[str, Any]:
+    """
+    Returns the rule-based base configuration (e.g., feature list)
+    for a given dataset and architecture.
+
+    This function formalizes the logic contained in the EXPERIMENT_CONFIGURATIONS
+    dictionary, making it accessible to the new pipeline.
+    """
+    # This logic mirrors the structure of your existing EXPERIMENT_CONFIGURATIONS
+    if architecture_name in ("Seq2Context", "Seq2PIN", "Seq2Trend", "Seq2Fuser"):
+        if dataset_name == "VOLVE":
+            return {"selected_features": CANON_FEATURES}
+        elif dataset_name == "UNISIM_IV":
+            return {"selected_features": CANON_FEATURES}
+            
+    elif architecture_name == "Seq2Value":
+        if dataset_name == "VOLVE":
+            return {"selected_features": ["PI", "BORE_GAS_VOL", "BORE_OIL_VOL"]}
+    
+    # You can add the logic for UNISIM and OPSD here if needed
+    elif dataset_name == "UNISIM":
+        return EXPERIMENT_CONFIGURATIONS_3.get("UNISIM", [{}])[0]
+    elif dataset_name == "OPSD":
+        return EXPERIMENT_CONFIGURATIONS_4.get("OPSD", [{}])[0]
+        
+    # Default fallback if no specific rule matches
+    logging.warning(f"No specific base config found for {dataset_name}/{architecture_name}. Returning empty config.")
+    return {}
 
 # =============================================================================
 # X. FEW-SHOT PREDICTION SETTINGS

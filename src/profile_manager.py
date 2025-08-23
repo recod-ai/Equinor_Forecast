@@ -82,21 +82,25 @@ def load_and_expand_profile(
     arch_definitions = _load_arch_configs(arch_defs_path)
     expanded_configs: List[Dict[str, Any]] = []
     for config in base_configs:
+
+        # Create a new dictionary excluding keys where the value is NaN.
+        cleaned_config = {k: v for k, v in config.items() if pd.notna(v)}
         arch_id = config.get("architecture_profile")
         
-        # --- THE FIX ---
-        # If an architecture_profile is provided, expand it.
-        if arch_id:
+        # Only expand if arch_id is a valid, non-empty string.
+        if arch_id and pd.notna(arch_id):
             if arch_id not in arch_definitions:
-                raise KeyError(f"Architecture profile '{arch_id}' not found.")
+                # This error is still correct if the ID is present but not found.
+                raise KeyError(f"Architecture profile '{arch_id}' not found in definitions.")
             
+            # The expansion logic: Start with the definition, then update with profile values.
             final_config = arch_definitions[arch_id].copy()
             final_config.update(config)
             expanded_configs.append(final_config)
         else:
-            # If no architecture_profile is provided (e.g., for Seq2PIN),
-            # just use the config as is.
-            expanded_configs.append(config)
+            # If `architecture_profile` is missing or NaN (like for Seq2Trend),
+            # just use the config from the profile as is.
+            expanded_configs.append(cleaned_config)
 
     return _validate_and_prepare(expanded_configs)
 

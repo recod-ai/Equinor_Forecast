@@ -1,6 +1,0 @@
-architecture_profile,batch_size,data_sample,epochs,lag_window,learning_rate,physics_strategy,experiment_id,seed
-arch_cnn_02_film,64,0.75,200,3,0.009722027925021177,static,validation_F12_RePIN_RobustScaler_rank_04,42
-arch_tcn_03_film,64,0.9,400,15,0.007654937494803788,pressure_ensemble,validation_F12_RePIN_RobustScaler_rank_05,42
-arch_rnn_01_film,64,0.9,300,15,0.044389818397000604,exponential,validation_F12_RePIN_RobustScaler_rank_06,42
-arch_rnn_01_film,64,0.9,100,3,0.024013538923784862,exponential,validation_F12_RePIN_RobustScaler_rank_07,42
-arch_cnn_02_bias_scale,64,0.75,400,3,0.00045301493842374665,arps,validation_F12_RePIN_RobustScaler_rank_08,42

@@ -17,7 +17,7 @@ This repository brings together two complementary research efforts aimed at adva
 
 ---
 
-## Residual Physics-Informed Neural Networks (RePINN)
+## Residual Physics-Informed Neural Networks (RePINN) [Under construction]
 
 * Fuses physical decline-curve models with deep residual learning
 * Supports a variety of physical strategies and neural context extractors
@@ -25,6 +25,52 @@ This repository brings together two complementary research efforts aimed at adva
 * Maintains physical plausibility while boosting forecast accuracy
 * Demonstrates superior performance on production data
 * Enhances transparency and adaptability for critical energy-sector applications
+
+## Project Overview
+
+The Equinor Forecast Project represents a comprehensive data science initiative focused on developing sophisticated time series forecasting workflows using the Darts library and advanced machine learning pipelines. This repository serves as a bridge between theoretical forecasting concepts and practical implementation, providing researchers and practitioners with a complete toolkit for building, evaluating, and deploying forecasting models across diverse industrial datasets.
+
+The project encompasses two primary domains of expertise: foundational time series modeling using the Darts library, and production-ready forecasting pipelines that incorporate adaptive learning, online training, and real-time prediction capabilities. The repository is structured to facilitate both educational exploration and industrial application, making it suitable for academic research, commercial deployment, and hybrid use cases.
+
+At its core, the project addresses the critical challenge of forecasting in dynamic environments where traditional static models fail to capture evolving patterns and changing system dynamics. Through the implementation of sliding window fine-tuning, incremental learning algorithms, and sophisticated post-processing techniques, the project delivers forecasting solutions that adapt continuously to new data while maintaining computational efficiency and prediction accuracy.
+
+The repository integrates multiple datasets from the energy sector, including offshore oil production data from the Volve field, reservoir simulation outputs from UNISIM models, and European energy generation data from the Open Power System Data (OPSD) initiative. This diverse dataset collection enables comprehensive evaluation of forecasting methodologies across different temporal scales, data characteristics, and industrial contexts.
+
+## Notebooks
+
+This directory is the central hub for all forecasting experiments, divided into two core methodologies. Each notebook contains detailed Markdown cells explaining its internal steps, and each subdirectory has a dedicated `README.md` for a deeper overview of its specific pipeline.
+
+---
+
+### 📄 Online Learning & Adaptive Forecasting
+
+This pipeline focuses on models that are continuously fine-tuned on new data using a sliding window, simulating real-world adaptive learning scenarios.
+
+*   #### [**`forecast_DL.ipynb`**](https://github.com/recod-ai/Equinor_Forecast/blob/main/notebooks/forecast/forecast_DL.ipynb)
+    Drives the online training loop for **Deep Learning models** (Keras/TensorFlow). It automates the entire process of initial training, iterative fine-tuning on a sliding window, and parallel prediction across multiple time series.
+
+*   #### [**`forecast_XGB.ipynb`**](https://github.com/recod-ai/Equinor_Forecast/blob/main/notebooks/forecast/forecast_XGB.ipynb)
+    Applies the same adaptive learning methodology using **Extreme Gradient Boosting (XGBoost)**. It handles sequential fine-tuning and prediction, demonstrating the flexibility of the online training architecture.
+
+*   #### 📖 **[Online Forecasting README](https://github.com/recod-ai/Equinor_Forecast/blob/main/notebooks/forecast/README.md)**
+    For a comprehensive overview of this methodology, its architecture, and how the models adapt over time, please refer to this main README file.
+
+---
+
+### 📊 Darts Hyperparameter Sensitivity Analysis
+
+This pipeline is designed to conduct a large-scale, fair comparison of multiple forecasting models by evaluating them across a wide range of hyperparameter configurations.
+
+*   #### 🚀 [**`run_all_experiments_DARTS.ipynb`**](https://github.com/recod-ai/Equinor_Forecast/blob/main/notebooks/darts/run_all_experiments_DARTS.ipynb)
+    **The Orchestrator.** This is the primary entry point for executing the entire sensitivity analysis. It automates the process by reading `config.py`, generating a job for each `(model, configuration)` pair, and running them in parallel via `papermill`. It is designed for large-scale, reproducible experimentation.
+
+*   #### 📈 [**`analyze_results.ipynb`**](https://github.com/recod-ai/Equinor_Forecast/blob/main/notebooks/darts/analyze_results.ipynb)
+    **The Report Generator.** This notebook is the final step in the analysis. It automatically scans the `papermill_outputs` directory, loads all individual result CSVs, and performs a systematic analysis to identify the best-performing configuration for each algorithm. Its final output is the set of clean, paper-ready tables.
+
+*   #### 📖 **[Darts Sensitivity Analysis README](https://github.com/recod-ai/Equinor_Forecast/tree/main/notebooks/darts)**
+    For a complete guide on the experimental design, the configuration profiles tested, and the parallel execution workflow, see this main README file.
+
+<sub>Note: The plots and results were omitted, as Git does not allow files larger than 50 MB. All experiments can be easily reproduced by cloning this directory and running the provided notebooks and scripts.</sub>
 
 ---
 
@@ -103,21 +149,56 @@ pip install -r requirements.txt
 
 ### 🧩 2. Repository Map
 
-```text
-Equinor_Forecast/
-├── notebooks/
-│   ├── darts/            # Darts-based experiments
-│   └── forecast/         # Custom pipelines
-├── src/
-│   ├── forecast_pipeline # Orchestrator & configs
-│   ├── data/             # Loaders & preprocessing
-│   ├── models/           # ML model implementations
-│   ├── evaluation/       # Metrics & analysis
-│   └── statistical/      # ARIMA, AutoARIMA, etc.
-├── data/                 # Raw & processed datasets
-├── experiments/          # Saved configs & results
-└── output_manifest/      # Generated artefacts
+The Equinor Forecast repository is meticulously organized to provide a clear and logical structure for all project components. This hierarchical arrangement facilitates navigation, understanding, and collaboration, ensuring that users can easily locate relevant files and comprehend their interdependencies. The repository is divided into several key directories, each serving a specific purpose within the overall forecasting framework.
+
 ```
+.
+├── README.md              # Top-level overview and orchestration
+├── notebooks/
+│   ├── darts/             # Darts-specific modeling notebooks
+│   │   └── README.md      # Detailed documentation for Darts notebooks
+│   │   └── DARTS.ipynb    # Introduction to Darts library and basic models
+│   │   └── DARTS_Hybrid.ipynb # Demonstrates hybrid forecasting models with Darts
+│   │   └── run_all_experiments_DARTS.ipynb # Script to run all Darts experiments
+│   └── forecast/          # Overall forecasting workflows and analysis
+│       └── README.md      # Explanation of forecasting pipelines and usage
+│       └── base_pipeline.ipynb # Core pipeline structure and common functionalities
+│       └── forecast_DL.ipynb # Deep Learning-based forecasting pipeline
+│       └── forecast_XGB.ipynb # XGBoost-based forecasting pipeline
+│       └── main_forecast_analysis.ipynb # Notebook for analyzing forecast results
+│       └── main_forecast_pipeline.ipynb # Main notebook to run the forecasting pipeline
+│       └── ... (other supporting notebooks and directories)
+├── data/                  # Contains raw and processed data files
+├── src/                   # Source code for custom modules and utilities
+├── models/                # Directory for saving trained models
+├── evaluation/            # Scripts for model evaluation and metrics
+├── training/              # Scripts for model training and fine-tuning
+├── utils/                 # General utility functions
+```
+
+### `notebooks/` Directory
+
+The `notebooks/` directory is the central hub for all Jupyter notebooks developed within the project. It is further subdivided into two main categories: `darts/` and `forecast/`, each dedicated to a distinct aspect of the forecasting workflow. This separation ensures clarity and modularity, enabling users to focus on specific areas of interest without being overwhelmed by the entire codebase.
+
+#### `notebooks/darts/`
+
+This subdirectory is dedicated to notebooks that explore and implement time series forecasting models using the Darts library. Darts is a Python library for easy manipulation and forecasting of time series, offering a wide range of models from traditional statistical methods to deep learning approaches. The notebooks in this directory are designed to provide hands-on experience with Darts, covering fundamental concepts, model selection, training, and evaluation.
+
+- **`README.md`**: This README provides detailed documentation specific to the Darts notebooks. It explains the purpose of each notebook, the Darts models demonstrated, and any specific prerequisites or configurations required to run them. It serves as a comprehensive guide for users interested in leveraging Darts for their forecasting tasks.
+
+- **`DARTS.ipynb`**: This notebook serves as an introduction to the Darts library. It covers basic functionalities such as data loading, time series creation, and the application of simple Darts models like ARIMA. It's an ideal starting point for users new to Darts or time series forecasting in general.
+
+- **`run_all_experiments_DARTS.ipynb`**: This notebook is designed to automate the execution of various Darts experiments. It provides a structured way to run multiple models, evaluate their performance, and compare results. This is particularly useful for systematic model benchmarking and hyperparameter tuning within the Darts framework.
+
+#### `notebooks/forecast/`
+
+This subdirectory contains notebooks that demonstrate end-to-end forecasting workflows, encompassing data loading, preprocessing, model training, and output interpretation. These notebooks focus on building robust and adaptive forecasting pipelines that can handle real-world complexities, including incremental learning and parallel processing. The emphasis here is on operationalizing forecasting models for continuous deployment and performance monitoring.
+
+- **`README.md`**: This README provides an in-depth explanation of the forecasting pipelines implemented in this directory. It details the architecture, key components, and the underlying principles of adaptive learning and online training. It also includes instructions on how to configure and run the various forecasting workflows.
+
+- **`forecast_DL.ipynb`**: This notebook implements a deep learning-based forecasting pipeline. It showcases how neural networks can be integrated into an adaptive learning framework for time series prediction. It covers aspects such as model architecture, training strategies, and the use of deep learning frameworks like TensorFlow/Keras.
+
+- **`forecast_XGB.ipynb`**: This notebook focuses on an XGBoost-based forecasting pipeline. XGBoost, a powerful gradient boosting framework, is applied within the adaptive learning paradigm. This notebook demonstrates its effectiveness in handling complex time series data and achieving high prediction accuracy.
 
 ### 🧪 3. Datasets
 

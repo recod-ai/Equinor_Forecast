@@ -312,8 +312,31 @@ HYPERPARAM_DESCRIPTIONS: Dict[str, Dict[str, Dict[str, Any]]] = {
     },
 
         "AutoARIMA": {
-        "Medium (Balanced)": {}
+        # Fastest: deterministic, sem quantis, sem intervalos, apenas forecast central
+        "Small & Fast": {
+            "quantiles": None,
+            "random_state": 7,
+        },
+        # Default: probabilístico, alguns quantis, balanced, multioutput default do Darts
+        "Medium (Balanced)": {
+        },
+        # Robust: mais quantis, mais amostras, intervalos mais amplos, pode ser mais lento mas robusto
+        "Large & Robust": {
+            "quantiles": [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95],
+            "random_state": 35,
+        },
+        # Regularized: como Small & Fast mas seed diferente (reprodutibilidade e estabilidade), sem quantis
+        "Stable & Regularized": {
+            "quantiles": None,
+            "random_state": 17,
+        },
+        # Wide & Shallow: vários quantis, intervalo intermediário, para explorar distribuição
+        "Wide & Shallow": {
+            "quantiles": [0.05, 0.25, 0.5, 0.75, 0.95],
+            "random_state": 26,
+        },
     },
+
 
 }
 
