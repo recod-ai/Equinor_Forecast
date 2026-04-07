@@ -137,15 +137,21 @@ The pipeline transforms heterogeneous time-series into cumulative, lagged, norma
 
 ## 🚀 Getting Started
 
-### ⚖️ 1. Installation
+### ⚖ 1. Installation
 
-Clone the repository and install the required dependencies.
+Recommended baseline: **Python 3.10.20** using **pyenv + venv** (or an equivalent isolated Python 3.10 environment).
 
-```bash
-git clone https://github.com/recod-ai/Equinor_Forecast.gitc
+#### Base installation
+
+git clone git@github.com:recod-ai/Equinor_Forecast.git
 cd Equinor_Forecast
+
+python -m venv .venv
+source .venv/bin/activate
+
+python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
-```
+python -m ipykernel install --user --name equinor310 --display-name "Python (equinor310)"
 
 ### 🧩 2. Repository Map
 

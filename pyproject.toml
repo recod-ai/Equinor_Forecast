@@ -1,27 +1,62 @@
 [build-system]
-requires = ["setuptools>=61", "wheel"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "forecast_pipeline"            # nome que aparecerá no pip
+name = "forecast-pipeline"
 version = "0.1.0"
-description = "Pipeline de previsão Equinor"
+description = "Equinor forecasting workflows for adaptive learning, HPO, and physics-informed time-series modeling"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.11"
 
 dependencies = [
     "numpy",
     "pandas",
-    "tensorflow",         # ou torch, etc.
+    "scipy",
+    "scikit-learn",
+    "statsmodels",
+    "joblib",
+    "matplotlib",
+    "plotly",
+    "tensorflow==2.19.*",
+    "tensorflow-probability",
     "tqdm",
     "rich",
     "pyyaml",
     "openpyxl",
     "colorlog",
+    "pydantic",
+    "optuna",
+    "xgboost",
+]
+
+[project.optional-dependencies]
+notebooks = [
+    "jupyterlab",
+    "notebook",
+    "ipykernel",
+    "ipywidgets",
+    "nbformat",
+    "nbconvert",
+    "seaborn",
+    "pillow",
+    "pykalman",
+]
+
+darts = [
+    "darts[torch]>=0.41.0",
+    "torch",
+    "pytorch-lightning",
+    "papermill",
+]
+
+dev = [
+    "pytest",
 ]
 
 [tool.setuptools]
-package-dir = {"" = "src"}            # diz que os pacotes estão em src/
+package-dir = {"" = "src"}
+py-modules = ["profile_manager", "run_campaign"]
 
 [tool.setuptools.packages.find]
-where = ["src"]                       # encontre tudo dentro de src/
+where = ["src"]
