@@ -16,3 +16,33 @@ darts_logs/
 .ipynb_checkpoints/
 __pycache__/
 *.pyc
+
+# === Local heavy artifacts / generated experiments ===
+src/experiment_configs/*
+!src/experiment_configs/.gitkeep
+# Darts notebooks and outputs kept local
+notebooks/darts/
+notebooks/darts/**
+# Local forecast artifacts
+notebooks/forecast/checkpoint/
+notebooks/forecast/models/
+notebooks/forecast/scalers/
+notebooks/forecast/data/*.xlsx
+notebooks/forecast/data/*.zip
+# Optional noisy local files
+*.pkl
+# Local-only directories not for publication
+experiments/
+series_store/
+artifacts/
+Article/
+# Optional local notebooks / analysis areas
+# Local scratch files
+paths-to-purge.txt.txt
+# Local-only published exclusions
+.python-version
+# HPO local artifacts (keep notebooks, ignore generated outputs)
+notebooks/hpo/best_model.keras
+notebooks/hpo/darts_debug.txt
+notebooks/hpo/logs/
+notebooks/hpo/Meta_validation

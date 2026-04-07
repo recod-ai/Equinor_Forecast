@@ -1,7 +1,0 @@
-dataset,well,architecture_name,architecture_profile,physics_strategy,data_sample,learning_rate,trend_degree,lag_window,batch_size,epochs,optuna_trial_number,seed
-UNISIM_IV,P11,Seq2Trend,,static,0.01,0.001,5,300,16,50,65,123
-UNISIM_IV,P12,Seq2Trend,,pressure_ensemble,0.99,0.01,6,300,16,50,39,123
-UNISIM_IV,P13,Seq2Trend,,arps,0.01,0.05,2,300,8,50,66,123
-UNISIM_IV,P14,Seq2Trend,,pressure_ensemble,0.01,0.001,6,300,16,50,109,123
-UNISIM_IV,P15,Seq2Trend,,exponential,0.5,0.005,5,300,16,50,70,123
-UNISIM_IV,P16,Seq2Trend,,combined_exp_arps,0.25,0.05,5,300,8,200,82,123

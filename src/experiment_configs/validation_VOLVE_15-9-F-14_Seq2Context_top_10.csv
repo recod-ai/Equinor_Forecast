@@ -1,2 +1,0 @@
-architecture_profile,batch_size,data_sample,epochs,lag_window,learning_rate,physics_strategy,experiment_id,seed
-arch_cnn_03_bias_scale,32,0.25,300,3,0.004932990939404296,arps,validation_VOLVE_15-9-F-14_Seq2Context_rank_01,42
