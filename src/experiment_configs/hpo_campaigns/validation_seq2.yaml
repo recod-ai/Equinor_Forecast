@@ -1,0 +1,32 @@
+campaign_name: validation_seq2
+run_scope:
+  dataset_name: FILTERED
+  wells:
+  - FILTERED
+job_defaults:
+  seed: 42
+  plot: false
+  feature_kind: Normal
+  use_known_good: false
+  lag_window: 100
+  horizon: 300
+  patience: 50
+  test_size: 0.55
+  val_size: 0.2
+  aggregation_method: reconstruct_warm
+  evaluate_by_slice: true
+  slice_ratios:
+  - 1.0
+  aggregation_quantiles:
+  - 0.25
+  - 0.5
+  - 0.75
+run_params:
+  ensemble_size: 3
+  max_workers: 1
+infra:
+  profiles_dir: src/experiment_configs/profiles
+  experiments_output_dir: /home/gabriel/Documentos/Equinor/src/experiment_configs/WARM_1/results/seq2
+  hpo_studies_dir: src/experiment_configs/studies
+  architecture_yaml_path: src/experiment_configs/architectures_PINNs.yaml
+  log_level: INFO
