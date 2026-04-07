@@ -70,7 +70,8 @@ def get_data_sources(opsd_type: str = "wind") -> list[dict]:
             # FIX: The "wells" key was duplicated. I combined the lists.
             # If the intention was to use only one, change it here.
             "wells": ["15/9-F-14", "15/9-F-12", "15/9-F-11", "15/9-F-15 D"],
-            "wells": ["15/9-F-14"],
+            "wells": ["15/9-F-12", "15/9-F-14"],
+            # "wells": ["15/9-F-14"],
             "load_params": {
                 "data_path":  DATA_DIR / "volve" / "Volve_Equinor.csv",
                 "serie_name": "BORE_OIL_VOL",
@@ -89,8 +90,8 @@ def get_data_sources(opsd_type: str = "wind") -> list[dict]:
         # --- UNISIM_IV ---
         {
             "name": "UNISIM_IV",
-            "wells": ["P11, P12, P13, P14, P15, P16"],
-            "wells": ["P13"],
+            "wells": ["P11", "P12", "P13", "P14", "P15", "P16"],
+            # "wells": ["P14"],
             "load_params": {
                 "data_path": DATA_DIR / "UNISIM-IV-2026" / "Well_{well}_UNISIM-IV.csv",
                 "serie_name": "BORE_OIL_VOL",

@@ -1,3 +1,13 @@
+# src/utils/utilities.py
+from __future__ import annotations
+
+import inspect
+import json
+import re
+from typing import Any, Dict, Optional
+
+import numpy as np
+
 import os
 import shutil
 
@@ -6,6 +16,196 @@ from pathlib import Path
 import glob
 import logging
 
+
+# ---------------------------
+# Generic signature helpers
+# ---------------------------
+
+def _func_accepts_var_kwargs(func) -> bool:
+    """Return True if the function accepts **kwargs."""
+    try:
+        sig = inspect.signature(func)
+        return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+    except Exception:
+        # Be permissive when we cannot inspect (keeps runtime robust)
+        return True
+
+
+def _filter_kwargs_for(func, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Pass only kwargs that the function can accept (unless it has **kwargs).
+    This prevents 'got an unexpected keyword argument' errors when APIs evolve.
+    """
+    if _func_accepts_var_kwargs(func):
+        return kwargs
+    try:
+        allowed = set(inspect.signature(func).parameters.keys())
+        return {k: v for k, v in kwargs.items() if k in allowed}
+    except Exception:
+        return kwargs
+
+
+# ---------------------------
+# ARPS-specific adapters
+# ---------------------------
+
+_SOLVER_ALIASES = {
+    "wls": "grid",              # legacy label for analytic WLS → 'grid'
+    "nelder": "nelder-mead",
+    "nelder_mead": "nelder-mead",
+    "continuous": "lbfgs",      # older name meaning "continuous optimization"
+}
+
+def _normalize_solver(raw: Optional[str]) -> str:
+    """
+    Normalize solver/method labels to the canonical set accepted by ARPS fit.
+    """
+    s = (raw or "grid").strip().lower()
+    return _SOLVER_ALIASES.get(s, s)
+
+
+def _parse_b_grid_repr(text: Any) -> Optional[np.ndarray]:
+    """
+    Parse a human-friendly 'b_grid' representation into a numpy array.
+
+    Accepted formats:
+      - "linspace(a,b,n)"
+      - "logspace(a,b,n)"   (a,b are exponents, e.g., logspace(-2, 0, 5))
+      - JSON list string, e.g., "[0.1, 0.2, 0.5]"
+    Returns None if parsing fails.
+    """
+    if not isinstance(text, str):
+        return None
+
+    m = re.match(r"\s*linspace\(\s*([0-9eE.+-]+)\s*,\s*([0-9eE.+-]+)\s*,\s*(\d+)\s*\)\s*$", text)
+    if m:
+        a, b, n = float(m.group(1)), float(m.group(2)), int(m.group(3))
+        return np.linspace(a, b, max(3, n))
+
+    m = re.match(r"\s*logspace\(\s*([0-9eE.+-]+)\s*,\s*([0-9eE.+-]+)\s*,\s*(\d+)\s*\)\s*$", text)
+    if m:
+        a, b, n = float(m.group(1)), float(m.group(2)), int(m.group(3))
+        return np.logspace(a, b, max(3, n))
+
+    if text.strip().startswith("[") and text.strip().endswith("]"):
+        try:
+            arr = json.loads(text)
+            return np.asarray(arr, dtype=float)
+        except Exception:
+            return None
+
+    return None
+
+
+def _adapt_arps_kwargs_for_fit(fit_func, params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert heterogeneous/legacy ARPS params into kwargs compatible with the current
+    `fit_arps_canonical` signature. Also materializes `b_grid` when solver='grid'
+    (using b_min/b_max/b_grid_size/b_grid_kind), and clamps safe ranges.
+
+    - Accepts both flat and legacy names:
+        variant / arps_variant
+        weighting / arps_weighting
+        solver / method
+        piecewise / allow_regime_change
+        piecewise_min_delta_bic / cp_search
+        loss / loss_scale (→ loss_delta)
+        b_grid (str/list/np.ndarray) OR b_min/b_max/b_grid_size/b_grid_kind
+    - If loss='quantile' and quantile_tau missing, default to 0.5.
+    - burn_in_fraction is clamped to [0.0, 0.2].
+
+    Returns a filtered dict that can be splatted into `fit_arps_canonical`.
+    """
+    k: Dict[str, Any] = dict(params or {})
+
+    # Unify solver/method
+    raw_solver = k.pop("solver", None)
+    raw_method = k.pop("method", None)
+    chosen_solver = raw_solver if raw_solver is not None else raw_method
+    k["solver"] = _normalize_solver(chosen_solver)
+
+    # Variant & weighting (keep given values; fallback to legacy names)
+    if "variant" not in k and "arps_variant" in k:
+        k["variant"] = k.pop("arps_variant")
+
+    if "weighting" not in k and "arps_weighting" in k:
+        k["weighting"] = k.pop("arps_weighting")
+
+    # Loss scale alias
+    if "loss_delta" not in k and "loss_scale" in k:
+        try:
+            k["loss_delta"] = float(k.pop("loss_scale"))
+        except Exception:
+            k.pop("loss_scale", None)
+
+    # Piecewise aliases
+    if "piecewise" not in k and "allow_regime_change" in k:
+        k["piecewise"] = bool(k.pop("allow_regime_change"))
+
+    if "piecewise_min_delta_bic" not in k and "cp_search" in k:
+        try:
+            k["piecewise_min_delta_bic"] = float(k.pop("cp_search"))
+        except Exception:
+            # Remove unusable alias value and keep default
+            k.pop("cp_search", None)
+
+    # Quantile tau default
+    if str(k.get("loss", "wls")).lower() == "quantile" and "quantile_tau" not in k:
+        k["quantile_tau"] = 0.5
+
+    # Clamp burn-in
+    if "burn_in_fraction" in k:
+        try:
+            b = float(k["burn_in_fraction"])
+        except Exception:
+            b = 0.0
+        k["burn_in_fraction"] = float(max(0.0, min(0.2, b)))
+
+    # b_grid handling
+    # 1) Try direct b_grid (supports str/list/np.ndarray)
+    if "b_grid" in k and k["b_grid"] is not None:
+        if isinstance(k["b_grid"], str):
+            parsed = _parse_b_grid_repr(k["b_grid"])
+            if parsed is not None:
+                k["b_grid"] = parsed
+            else:
+                k.pop("b_grid", None)
+        elif not isinstance(k["b_grid"], np.ndarray):
+            try:
+                k["b_grid"] = np.asarray(k["b_grid"], dtype=float)
+            except Exception:
+                k.pop("b_grid", None)
+
+    # 2) If solver='grid' and b_grid still missing, build it from bounds + size + kind
+    if str(k.get("solver", "grid")).lower() == "grid" and k.get("b_grid") is None:
+        try:
+            b_min = float(k.pop("b_min", 0.1) or 0.1)
+        except Exception:
+            b_min = 0.1
+        try:
+            b_max = float(k.pop("b_max", 2.0) or 2.0)
+        except Exception:
+            b_max = 2.0
+        try:
+            size = int(k.pop("b_grid_size", 21) or 21)
+        except Exception:
+            size = 21
+        kind = str(k.pop("b_grid_kind", "lin")).lower()
+
+        size = max(3, size)
+        if kind.startswith("log"):
+            b_min = max(1e-6, b_min)
+            b_max = max(b_min * 1.001, b_max)
+            k["b_grid"] = np.exp(np.linspace(np.log(b_min), np.log(b_max), size))
+        else:
+            k["b_grid"] = np.linspace(b_min, max(b_min + 1e-6, b_max), size)
+
+    # Strip helper-only keys if still present (not consumed by grid construction)
+    for helper in ("b_min", "b_max", "b_grid_size", "b_grid_kind"):
+        k.pop(helper, None)
+
+    # Final filtering against the fit function signature
+    return _filter_kwargs_for(fit_func, k)
 
 # =============================================================================
 # Helper Functions (General)
@@ -263,6 +463,85 @@ def get_center_and_scale(scaler, as_tf=True, dtype=tf.float32):
     if as_tf:
         center_tf = tf.constant(center_np, dtype=dtype)
         scale_tf  = tf.constant(scale_np,  dtype=dtype)
+        return center_tf, scale_tf
+    else:
+        return center_np, scale_np
+
+
+import numpy as np
+import tensorflow as tf
+from typing import Tuple, Any, Union
+
+def get_center_and_scale(
+    scaler: Any, 
+    as_tf: bool = True, 
+    dtype: tf.DType = tf.float32
+) -> Union[Tuple[tf.Tensor, tf.Tensor], Tuple[np.ndarray, np.ndarray]]:
+    """
+    Returns (center, scale) for any scikit-learn compatible scaler.
+
+    If as_tf=True, returns tf.Tensor; otherwise, returns NumPy ndarray.
+    This function intelligently extracts the equivalent of a location and scale
+    parameter for various scaler types.
+
+    Scaler Logic:
+    - StandardScaler: center=mean_, scale=scale_ (std dev)
+    - RobustScaler: center=center_ (median), scale=scale_ (IQR)
+    - QuantileTransformer: center=quantiles_[median_idx], scale=scale_ (IQR, approx.)
+    - MinMaxScaler: center=min_, scale=(max_ - min_)
+    - MaxAbsScaler: center=0, scale=max_abs_
+    - PowerTransformer: Returns the stats of its internal Standard/RobustScaler.
+    """
+    # --- 1. Handle PowerTransformer ---
+    # PowerTransformer contains another scaler internally. We analyze that one.
+    if hasattr(scaler, 'lambdas_'): # Heuristic to identify PowerTransformer
+        # After fitting, PowerTransformer stores a final scaler (usually StandardScaler)
+        if hasattr(scaler, '_scaler'): 
+            return get_center_and_scale(scaler._scaler, as_tf=as_tf, dtype=dtype)
+        else:
+            # If not fitted or structure is unexpected, return identity
+            center_np = np.array([0.0])
+            scale_np = np.array([1.0])
+    
+    # --- 2. Extract Center Parameter ---
+    elif hasattr(scaler, "mean_"):      # StandardScaler
+        center_np = scaler.mean_
+    elif hasattr(scaler, "center_"):    # RobustScaler
+        center_np = scaler.center_
+    elif hasattr(scaler, "min_"):       # MinMaxScaler
+        center_np = scaler.min_
+    elif hasattr(scaler, "quantiles_"): # QuantileTransformer
+        # For QuantileTransformer, the median is the center of the learned quantiles
+        median_index = scaler.quantiles_.shape[0] // 2
+        center_np = scaler.quantiles_[median_index]
+    elif hasattr(scaler, "max_abs_"):   # MaxAbsScaler
+        # MaxAbsScaler centers at 0 by definition
+        # We need to determine the number of features to create a correctly shaped array
+        num_features = scaler.max_abs_.shape[0]
+        center_np = np.zeros(num_features)
+    else:
+        raise AttributeError(f"Scaler of type {type(scaler).__name__} does not have a known center attribute.")
+
+    # --- 3. Extract Scale Parameter ---
+    if hasattr(scaler, "scale_"):       # StandardScaler, RobustScaler, QuantileTransformer
+        scale_np = scaler.scale_
+    elif hasattr(scaler, "min_") and hasattr(scaler, "data_max_"): # MinMaxScaler
+        # The scale for MinMaxScaler is the range (max - min)
+        scale_np = scaler.data_max_ - scaler.min_
+    elif hasattr(scaler, "max_abs_"):   # MaxAbsScaler
+        scale_np = scaler.max_abs_
+    elif hasattr(scaler, '_scaler') and hasattr(scaler._scaler, "scale_"): # PowerTransformer check
+        scale_np = scaler._scaler.scale_
+    else:
+        raise AttributeError(f"Scaler of type {type(scaler).__name__} does not have a known scale attribute.")
+        
+    # Ensure scale is never zero to avoid division issues
+    scale_np[scale_np == 0] = 1.0
+
+    # --- 4. Convert to TensorFlow Tensor if requested ---
+    if as_tf:
+        center_tf = tf.constant(center_np.astype(np.float32), dtype=dtype)
+        scale_tf = tf.constant(scale_np.astype(np.float32), dtype=dtype)
         return center_tf, scale_tf
     else:
         return center_np, scale_np
@@ -1056,4 +1335,252 @@ def create_annotated_heatmap(df: pd.DataFrame, ARCHITECTURE_ALIASES = Dict[str, 
     fig.show()
     print(f"✅ Plot saved in: {OUTPUT_IMAGE_PATH}")
 
+import numpy as np
 
+def _inverse_transform_1d(scaler, arr_1d: np.ndarray) -> np.ndarray:
+    if arr_1d.ndim != 1:
+        raise ValueError(f"_inverse_transform_1d expects 1D array, got shape={arr_1d.shape}")
+    return scaler.inverse_transform(arr_1d.reshape(-1, 1)).ravel()
+
+def _inverse_transform_2d(scaler, arr_2d: np.ndarray) -> np.ndarray:
+    if arr_2d.ndim != 2:
+        raise ValueError(f"_inverse_transform_2d expects 2D array, got shape={arr_2d.shape}")
+    flat = arr_2d.reshape(-1, 1)
+    inv  = scaler.inverse_transform(flat).reshape(arr_2d.shape[0], arr_2d.shape[1])
+    return inv
+
+def _looks_scaled(arr: np.ndarray) -> bool:
+    """
+    Heuristically checks if an array appears to be scaled by examining its
+    magnitude and standard deviation.
+
+    This version is more robust by focusing on two primary conditions:
+    1. The absolute maximum value is within a typical range for scaled data (e.g., under 10).
+    2. The standard deviation is neither negligibly small (like a constant) nor
+       excessively large (like unscaled raw data).
+
+    This avoids overly strict assumptions about the data's mean or its exact range.
+    """
+    if arr is None or arr.size < 2:
+        return False
+        
+    a = arr[np.isfinite(arr)]
+    if a.size < 2:
+        return False
+
+    # --- Calculate key statistics ---
+    std_val = np.nanstd(a)
+    abs_max = np.nanmax(np.abs(a))
+
+    # --- Core Logic ---
+    # 1. Is the standard deviation meaningful (i.e., not a near-constant array)?
+    has_meaningful_std = std_val > 0.01
+    
+    # 2. Are the values contained within a "small" numeric range?
+    #    This is the most reliable check to distinguish from raw, unscaled data
+    #    which often has values in the hundreds, thousands, or more.
+    has_small_magnitude = abs_max < 10.0 # Um pouco mais flexível que 6.0
+
+    return has_meaningful_std and has_small_magnitude
+
+
+
+
+def _detect_family_for_df(df: pd.DataFrame) -> str:
+    """Heurística simples e robusta: 'seq2' | 'arps' | 'darts'."""
+    txt = (
+        df.get("architecture", pd.Series([], dtype=str)).fillna("").astype(str) + " " +
+        df.get("architecture_name", pd.Series([], dtype=str)).fillna("").astype(str)
+    ).str.lower()
+    joined = " ".join(txt.tolist())
+
+    # Sinais fortes por coluna
+    if "variant" in df.columns:
+        return "arps"
+    if "profile" in df.columns:
+        return "darts"
+
+    # Sinais por nome
+    if "arps" in joined:
+        return "arps"
+    if "darts" in joined:
+        return "darts"
+
+    # Seq2 é o fallback mais comum quando há physics_strategy/aggregation_method
+    if "physics_strategy" in df.columns or "aggregation_method" in df.columns:
+        return "seq2"
+
+    return "seq2"  # fallback seguro
+
+# In src/utils/utilities.py (or wherever the function is located)
+
+def _detect_family_for_df(df: pd.DataFrame) -> str:
+    """Robust heuristic to detect family: 'seq2' | 'arps' | 'darts'."""
+    # Combine relevant text columns into a single series, handling missing data
+    text_cols = []
+    if "architecture" in df.columns:
+        text_cols.append(df["architecture"].fillna("").astype(str))
+    if "architecture_name" in df.columns:
+        text_cols.append(df["architecture_name"].fillna("").astype(str))
+
+    if not text_cols:
+        # If no architecture columns exist, rely on other signals
+        joined = ""
+    else:
+        # Concatenate all text columns into one, then join all rows into a single string
+        full_text_series = pd.concat(text_cols, axis=1).apply(lambda row: ' '.join(row), axis=1)
+        joined = " ".join(full_text_series.str.lower().tolist())
+
+    # --- Strong signals first (based on column presence) ---
+    if "variant" in df.columns:
+        return "arps"
+    # Check for 'profile' and if it has any non-null values
+    if "profile" in df.columns and df["profile"].notna().any():
+        return "darts"
+
+    # --- Weaker signals (based on text content) ---
+    if "arps" in joined:
+        return "arps"
+    if "darts" in joined:
+        return "darts"
+
+    # Seq2 is a common fallback if physics_strategy or aggregation_method exist
+    if "physics_strategy" in df.columns or "aggregation_method" in df.columns:
+        return "seq2"
+    
+    # Final fallback if architecture names contain "Seq2"
+    if "seq2" in joined:
+        return "seq2"
+
+    return "generic" # A safer fallback than "seq2"
+
+
+def _normalize_for_champions(df: pd.DataFrame) -> pd.DataFrame:
+    """Harmoniza campos mínimos sem efeitos colaterais (epochs ← n_epochs)."""
+    d = df.copy()
+    if "epochs" not in d.columns and "n_epochs" in d.columns:
+        d["epochs"] = d["n_epochs"]
+    return d
+
+
+def resolve_champions_columns_minimal(df: pd.DataFrame, metric: str = "val_smape_agg") -> list[str]:
+    """
+    Escolhe um subconjunto curto e informativo por família.
+    Só retorna colunas que EXISTEM no df. Mantém 'well' e métrica no fim.
+    """
+    fam = _detect_family_for_df(df)
+
+    by_family = {
+        "seq2": [
+            "well",
+            "physics_strategy", metric, "aggregation_method",
+            "epochs", "batch_size", "learning_rate", "data_sample", "lag_window",
+            
+        ],
+        "arps": [
+            "well",
+            "variant", metric, "solver", "weighting", "loss", "piecewise",
+            "loss_delta", "quantile_tau", "burn_in_fraction",
+            # diagnósticos úteis se existirem:
+            "piecewise_min_delta_bic", "b_min", "b_max",
+
+        ],
+        "darts": [
+            "well",
+            "profile", metric,               # principal “modelo” dentro de Darts
+            "epochs", "batch_size", "learning_rate",
+            "input_chunk_length", "output_chunk_length", "lag_window",
+            
+        ],
+    }
+
+    wanted = by_family.get(fam, by_family["seq2"])
+    present = [c for c in wanted if c in df.columns]
+
+    # garantir presença de chaves úteis
+    if "well" in df.columns and "well" not in present:
+        present.insert(0, "well")
+    if metric in df.columns and metric not in present:
+        present.append(metric)
+
+    return present
+
+
+# Minimal fallbacks to keep the notebook self-contained.
+def check_store_health(artifacts, series_store_root=None, max_show=10):
+    series_df = artifacts.get("series_df", pd.DataFrame())
+    bounds    = artifacts.get("boundaries_df", pd.DataFrame())
+    hist_map  = artifacts.get("full_history_by_well", {}) or {}
+    print("=== Series health ===")
+    print(f"rows={len(series_df)}  "
+          f"wells={series_df['well'].nunique() if 'well' in series_df else 0}  "
+          f"jobs={series_df['job_hash'].nunique() if 'job_hash' in series_df else 0}")
+    print(f"has columns: {sorted(set(series_df.columns) & {'t','ytrue','split','idx','arch'})}")
+
+    print("\n=== Boundaries manifest ===")
+    if isinstance(bounds, pd.DataFrame) and not bounds.empty:
+        print(bounds.head(min(max_show, len(bounds))))
+    else:
+        print("NOT FOUND (plots will use fallback unless you persist /meta/boundaries.parquet)")
+
+    print("\n=== Full history presence (from reader extras) ===")
+    wells = sorted(set(series_df["well"].dropna().astype(str))) if "well" in series_df.columns else []
+    ok = [w for w in wells if w in hist_map and not hist_map[w].empty]
+    missing = [w for w in wells if w not in hist_map or hist_map[w].empty]
+    print(f"ok={len(ok)}  missing={len(missing)}")
+    print("sample ok:", ok[:max_show])
+    print("sample missing:", missing[:max_show])
+
+    if series_store_root:
+        root = Path(series_store_root).resolve()
+        print("\n=== Files on disk (meta/history) ===")
+        meta = root / "meta" / "boundaries.parquet"
+        print("boundaries.parquet:", "EXISTS" if meta.exists() else "missing", meta)
+        for w in wells[:max_show]:
+            hp = root / "history" / f"well={w}" / "history.parquet"
+            print(f"history[{w}]:", "EXISTS" if hp.exists() else "missing", hp)
+
+def quick_risk_panel(
+    *,
+    artifacts: Dict[str, pd.DataFrame],
+    well: str,
+    arch_list: tuple[str, ...] = ("seq2", "arps"),
+    selector: str = "val+test",
+    horizons: tuple[int, ...] = (300, 600, 900, -1),
+    weighting: str = "uniform",
+    temp: float = 0.5,
+    palette: str = "default",
+    show: bool = True,
+):
+    """
+    Lightweight panel to render Risk CDFs for one well across arches/horizons.
+    Uses plot_risk_cdf_for under the hood (no I/O).
+    """
+    try:
+        from plotting.risk_plots import plot_risk_cdf_for
+    except Exception as e:
+        print(f"[quick_risk_panel] risk plotting not available: {e}")
+        return
+
+    series_df = artifacts.get("series_df", pd.DataFrame())
+    final_ensemble_df = artifacts.get("final_ensemble_df", pd.DataFrame())
+    boundaries_df = artifacts.get("boundaries_df", pd.DataFrame())
+    full_history_by_well = artifacts.get("full_history_by_well", {}) or {}
+
+    for arch in arch_list:
+        for H in horizons:
+            _ = plot_risk_cdf_for(
+                series_df=series_df,
+                final_ensemble_df=final_ensemble_df,
+                boundaries_df=boundaries_df,
+                full_history_by_well=full_history_by_well,
+                well=well,
+                arch=arch,
+                selector=selector,
+                horizon_days=H,
+                weighting=weighting,
+                temp=temp,
+                palette=palette,
+                title_prefix="Risk Curve",
+                show=show,
+            )

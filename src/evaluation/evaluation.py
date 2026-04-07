@@ -9,6 +9,106 @@ from plotly.subplots import make_subplots
 
 from sklearn.metrics import r2_score, mean_absolute_error
 
+import numpy as np
+from typing import Dict, List, Tuple
+
+def calculate_horizon_volume_metrics(
+    y_true_rates: np.ndarray, y_pred_rates: np.ndarray
+) -> Dict[str, float]:
+    """
+    Calculates volume-focused metrics for a SINGLE forecast horizon based on production rates.
+
+    This version is enhanced to also return the total actual volume as an internal '_weight'
+    key, which is used by the main rolling calculator for weighting.
+
+    Returns:
+        A dictionary containing APE_total (%), PBIAS (%), MAE_volume (physical units),
+        and _weight (the total actual volume for this horizon).
+    """
+    vol_true = float(np.sum(y_true_rates))
+    vol_pred = float(np.sum(y_pred_rates))
+
+    # Handle the edge case where the actual volume is zero
+    if vol_true == 0.0:
+        if vol_pred == 0.0:
+            return {"APE_total": 0.0, "PBIAS": 0.0, "MAE_volume": 0.0, "_weight": 0.0}
+        # If true volume is zero but predicted is not, the percentage error is infinite
+        return {"APE_total": float("inf"), "PBIAS": float("-inf"), "MAE_volume": abs(vol_pred), "_weight": 0.0}
+
+    diff = vol_pred - vol_true
+    ape_total = abs(diff) / vol_true * 100.0
+    pbias = -diff / vol_true * 100.0  # PBIAS = (true - pred) / true
+    mae_volume = abs(diff)
+    
+    return {"APE_total": ape_total, "PBIAS": pbias, "MAE_volume": mae_volume, "_weight": vol_true}
+
+
+def calculate_rolling_ape(
+    y_true_rates: np.ndarray,
+    y_pred_rates: np.ndarray,
+    horizon: int,
+    step: int,
+) -> Dict[str, float]:
+    """
+    Calculates a VOLUME-WEIGHTED average of the APE_total over a rolling forecast evaluation.
+
+    This method is less sensitive to high percentage errors during low-production periods,
+    providing a more business-relevant final metric.
+
+    Returns:
+        A dictionary with the weighted mean APE, plus standard deviation and median of the
+        unweighted APEs for context on the error distribution.
+    """
+    n = min(len(y_true_rates), len(y_pred_rates))
+    # Fallback for cases with insufficient data for even one window
+    if horizon <= 0 or step <= 0 or n < horizon:
+        metrics = calculate_horizon_volume_metrics(y_true_rates, y_pred_rates)
+        ape = metrics.get("APE_total", float("nan"))
+        if not np.isfinite(ape):
+            return {}
+        return {
+            'APE_total_rolling_mean': ape, # The mean is just the single value
+            'APE_total_rolling_std': 0.0,
+            'APE_total_rolling_median': ape,
+            'num_rolling_windows': 1
+        }
+
+    # Collect metrics and weights from each valid window
+    window_apes: List[float] = []
+    window_weights: List[float] = []
+    
+    num_windows = (n - horizon) // step + 1
+    for i in range(num_windows):
+        s, e = i * step, i * step + horizon
+        metrics = calculate_horizon_volume_metrics(y_true_rates[s:e], y_pred_rates[s:e])
+        
+        # Only include windows where the APE is a finite number
+        if np.isfinite(metrics["APE_total"]):
+            window_apes.append(metrics["APE_total"])
+            window_weights.append(metrics["_weight"])
+
+    if not window_apes:
+        return {}  # Return empty if no valid windows were found
+
+    # --- CORE LOGIC: Calculate the Volume-Weighted Average APE ---
+    # The weighted average is sum(value * weight) / sum(weight)
+    # This gives more importance to windows with higher production volume.
+    weighted_mean_ape = np.average(window_apes, weights=window_weights)
+
+    # For context, also calculate simple statistics on the unweighted APEs
+    # This helps understand the raw distribution of errors.
+    std_dev = float(np.std(window_apes, ddof=1)) if len(window_apes) > 1 else 0.0
+    median = float(np.median(window_apes))
+    
+    return {
+        # The main key now holds the NEW, fairer, volume-weighted value
+        'APE_total_rolling_mean': float(weighted_mean_ape),
+        # These provide context on the spread of errors across windows
+        'APE_total_rolling_std': std_dev,
+        'APE_total_rolling_median': median,
+        'num_rolling_windows': len(window_apes)
+    }
+
 
 def plot_time_series(df, serie_name, well=None):
     """
@@ -133,98 +233,6 @@ def compute_metrics_to_df(
     })
     return metrics
 
-
-# Função evaluate_and_plot_results com o parâmetro plot_cumulative adicionado
-# def evaluate_and_plot_results(
-#     test_series: 'TimeSeries', 
-#     forecast_series: 'TimeSeries',
-#     dataset: str,
-#     well_name: str, 
-#     lag_window: int, 
-#     horizon: int,
-#     train_cumulative_sum: float,
-#     sampling_rate: int,
-#     metrics_accumulator: List[Dict[str, Any]],
-#     method: str,
-#     plot_cumulative: bool = True  # Parâmetro adicionado
-#     model_config_size: str = "N/A"
-# ):
-#     """
-#     Avalia e plota os resultados da previsão.
-    
-#     Args:
-#         test_series (TimeSeries): Série de teste real.
-#         forecast_series (TimeSeries): Série de previsão.
-#         well_name (str): Nome do poço.
-#         lag_window (int): Tamanho da janela de lag.
-#         horizon (int): Horizonte de previsão.
-#         train_cumulative_sum (float): Soma cumulativa da série de treinamento.
-#         sampling_rate (int): Taxa de amostragem para plotagem.
-#         metrics_accumulator (List[Dict[str, Any]]): Lista para acumular as métricas.
-#         method (str): Método/Algoritmo utilizado.
-#         plot_cumulative (bool): Se True, plota a soma cumulativa.
-    
-#     Returns:
-#         None
-#     """
-    
-#     actual = test_series
-#     predicted = forecast_series
-    
-#     # Avaliar e plotar a série principal
-#     print(f"Avaliando e plotando série principal para o poço: {well_name}")
-#     metrics_series = compute_metrics_to_df(
-#         y_test=actual, 
-#         y_pred=predicted, 
-#         well=well_name, 
-#         method=method, 
-#         metric_type="Series"
-#     )
-#     if metrics_series and not plot_cumulative:
-#         metrics_accumulator.append(metrics_series)
-#     plot_results(
-#         y_test_list=actual,
-#         y_pred_list=predicted,
-#         wells=[well_name],
-#         window_size=lag_window,
-#         forecast_steps=horizon,
-#         dataset=dataset,
-#     )
-    
-#     if plot_cumulative:
-#         # Calcular as somas acumuladas
-        
-#         test_series = [item for sublist in test_series for item in sublist]
-#         forecast_series = [item for sublist in forecast_series for item in sublist]
-        
-#         actual_cumsum = pd.concat([pd.Series([train_cumulative_sum]), pd.Series(test_series)]).cumsum()
-#         predicted_cumsum = pd.concat([pd.Series([train_cumulative_sum]), pd.Series(forecast_series)]).cumsum()
-        
-#         # Downsample das séries para plotagem se necessário
-#         actual_cumsum = actual_cumsum[::sampling_rate].values
-#         predicted_cumsum = predicted_cumsum[::sampling_rate].values
-        
-#         # Avaliar e plotar a soma cumulativa
-#         print(f"\nAvaliando e plotando soma cumulativa para o poço: {well_name}")
-#         metrics_cumsum = compute_metrics_to_df(
-#             y_test=actual_cumsum, 
-#             y_pred=predicted_cumsum, 
-#             well=well_name, 
-#             method=method, 
-#             metric_type="Cumulative"
-#         )
-#         if metrics_cumsum:
-#             metrics_accumulator.append(metrics_cumsum)
-#         plot_results(
-#             y_test_list=[actual_cumsum],
-#             y_pred_list=[predicted_cumsum],
-#             wells=[well_name],
-#             window_size=lag_window,
-#             forecast_steps=horizon,
-#             dataset=dataset,
-#         )
-
-# The refactored function
 
 def evaluate_and_plot_results(
     test_series: 'TimeSeries',
@@ -407,9 +415,9 @@ def evaluate(y_test, y_pred):
     smape_score_test = smape(y_test, y_pred)
     mae_score_test = mean_absolute_error(y_test, y_pred)
     
-    print(f"R² on the test set: {r2_score_test:.4f}")
-    print(f"SMAPE on the test set: {smape_score_test:.4f}")
-    print(f"MAE on the test set: {mae_score_test:.4f}")
+    # print(f"R² on the test set: {r2_score_test:.4f}")
+    # print(f"SMAPE on the test set: {smape_score_test:.4f}")
+    # print(f"MAE on the test set: {mae_score_test:.4f}")
     
     return r2_score_test, smape_score_test, mae_score_test
 
@@ -441,35 +449,29 @@ def evaluate_return_dict(y_test, y_pred) -> Dict[str, float]:
     smape_score = smape(y_test, y_pred)
     mae = mean_absolute_error(y_test, y_pred)
     
-    print(f"R² on the test set: {r2:.4f}")
-    print(f"SMAPE on the test set: {smape_score:.4f}%")
-    print(f"MAE on the test set: {mae:.4f}")
+    # print(f"R² on the test set: {r2:.4f}")
+    # print(f"SMAPE on the test set: {smape_score:.4f}%")
+    # print(f"MAE on the test set: {mae:.4f}")
     
     return {'R²': r2, 'SMAPE': smape_score, 'MAE': mae}
 
 
-def smape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    """
-    Calcula o Symmetric Mean Absolute Percentage Error (SMAPE).
-    
-    Parâmetros:
-    - y_true (np.ndarray): Valores reais.
-    - y_pred (np.ndarray): Valores previstos.
-    
-    Retorna:
-    - float: Valor do SMAPE em porcentagem.
-    """
-    
-        # Verifica e converte os dados para np.ndarray, se necessário
-    if not isinstance(y_true, np.ndarray):
-        y_true = np.array(y_true)
-    if not isinstance(y_pred, np.ndarray):
-        y_pred = np.array(y_pred)
 
-    denominator = (np.abs(y_true) + np.abs(y_pred)) / 2
-    diff = np.abs(y_true - y_pred) / denominator
-    diff[denominator == 0] = 0.0  # Evita divisão por zero
-    return np.mean(diff) * 100
+def smape(y_true, y_pred, *, percent: bool = True, use_two_x: bool = True, eps: float = 1e-8) -> float:
+    """
+    SMAPE canônico.
+    - use_two_x=True → 2*|y-ŷ|/(|y|+|ŷ|)   (a variante mais comum)
+    - percent=True  → retorna em %
+    """
+    yt = np.asarray(y_true, dtype=float)
+    yp = np.asarray(y_pred, dtype=float)
+    denom = np.abs(yt) + np.abs(yp) + eps
+    num = np.abs(yt - yp)
+    val = (2.0 * num / denom) if use_two_x else (num / denom)
+    if percent:
+        val *= 100.0
+    return float(np.mean(val))
+
 
 def evaluate_and_plot_if_needed(
     y_test_list: List[np.ndarray],
@@ -812,20 +814,56 @@ def analyze_correlations(
 
 from typing import Tuple
 
-def evaluate_and_plot(y_true: np.ndarray, y_pred: np.ndarray, title: str, well: str,
-                       set_name: str, additional_params: dict):
-    from evaluation.evaluation import evaluate
+
+def evaluate_and_plot(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    title: str,
+    well: str,
+    set_name: str,
+    additional_params: dict,
+    # ----- novos args opcionais (backward-compatible) -----
+    r2: float = None,
+    smape: float = None,
+    mae: float = None,
+):
+    """
+    Gera o plot e retorna métricas. Se (r2, smape, mae) forem passadas,
+    não recalcula; caso contrário, calcula via `evaluate`.
+    """
     from forecast_pipeline.ensemble_output import EnsembleOutput
     from forecast_pipeline.plotting import plot_predictions_wrapper
-    r2, smape, mae = evaluate(y_true, y_pred)
-    plot_series = plot_predictions_wrapper  # alias; usa wrapper novo
-    plot_series(
+
+    # 1) Métricas: usa as fornecidas ou calcula
+    if r2 is None or smape is None or mae is None:
+        _r2, _smape, _mae = evaluate(y_true, y_pred)
+        r2    = _r2    if r2    is None else r2
+        smape = _smape if smape is None else smape
+        mae   = _mae   if mae   is None else mae
+
+    # 2) Monta kwargs para o wrapper (sem mutar o dict original)
+    add = dict(additional_params or {})
+    # title/set_name ficam acessíveis no wrapper; se ele não usar set_name,
+    # enriquecemos o título para manter contexto.
+    add.setdefault("title", f"{title} – {set_name}")
+    add.setdefault("kind", "P50")
+    # métricas (o wrapper deve exibi-las se presentes)
+    add["r2"] = r2
+    add["smape"] = smape
+    add["mae"] = mae
+    # em geral trabalhamos já no espaço físico; se o wrapper aceitar 'scaler',
+    # passar None evita inversão dupla
+    add.setdefault("scaler", None)
+
+    # 3) Chama o wrapper novo (sem recomputar nada)
+    plot_predictions_wrapper(
         EnsembleOutput(pred_test=y_pred, pred_val=y_pred),
         truth=y_true,
-        kind="P50",
         well=well,
-        **additional_params
+        **add
     )
+
+    # 4) Retorna métricas como antes
     return r2, smape, mae
 
 
@@ -1404,6 +1442,9 @@ def evaluate_model_seq(y_test_scaled: np.ndarray,
         'global_metrics': global_metrics
     }
 
+from typing import Union
+
+
 
 def evaluate_cumulative_seq(agg_y_test: np.ndarray, 
                             agg_y_pred: np.ndarray, 
@@ -1447,7 +1488,6 @@ def evaluate_cumulative_seq(agg_y_test: np.ndarray,
         'y_pred_cumsum': y_pred_cumsum
     }
 
-    
     
 def compute_metrics_to_df_seq(y_test: np.ndarray, 
                               y_pred: np.ndarray, 

@@ -7,6 +7,13 @@ The code is organized into logical sections to facilitate future maintenance.
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+import logging
+
+# Set to True to enable deterministic behavior for reproducibility.
+# When enabled, this will set random seeds for Python, NumPy, and TensorFlow,
+# ensuring that model training produces the same results across runs for the
+# same inputs and configurations. The default setting is True.
+ENABLE_DETERMINISM = True
 
 # =============================================================================
 # I. PATHS AND DATASETS
@@ -29,7 +36,7 @@ from typing import Any, Dict, List, Optional
 # I. ARCHITECTURE SELECTION
 # -------------------------------------------------------------------
 # Change this to switch architecture:
-ARCH: str = "Seq2Trend"
+ARCH: str = "Seq2PIN"
 
 # Which of the family of seq2seq models we support
 SEQ2SEQ_ARCHS: List[str] = ["Seq2Context", "Seq2PIN", "Seq2Trend", "Seq2Fuser"]
@@ -42,19 +49,20 @@ class DefaultExperimentParams:
     """
     Default parameters for all Seq2* architectures except Seq2Value.
     """
+    forecast_policy            = "Hybrid PINN" # PINN Original, original_pinn
     architecture_name: str     = ARCH
     feature_kind: str          = "Normal"
     use_known_good: bool       = False
-    data_sample: float         = 0.25
-    lag_window: int            = 300
+    data_sample: float         = 0.1
+    lag_window: int            = 100
     horizon: int               = 300
-    epochs: int                = 200
+    epochs: int                = 100
     patience: int              = 50
-    batch_size: int            = 16
-    learning_rate:float        = 1e-3
-    test_size: float           = 0.6
-    val_size: float            = 0.1
-    aggregation_method: str    = "median"
+    batch_size: int            = 8
+    learning_rate:float        = 5e-2
+    test_size: float           = 0.45
+    val_size: float            = 0.2
+    aggregation_method: str    = "hp_hist" # "reconstruct", "reconstruct_warm_raw", "reconstruct_warm_hp", "reconstruct_warm_ewma"
     evaluate_by_slice: bool    = True
     slice_ratios: List[float]  = (1.0,)
     aggregation_quantiles: List[float] = (0.25, 0.5, 0.75)
@@ -64,6 +72,16 @@ class DefaultExperimentParams:
     band: Optional[List[float]] = None              # e.g. [0.1, 0.9] if scenario == "BAND"
     show_components: bool      = False
 
+    # ------------------------------------------------------------------
+    # NEW: latent / extrapolation configuration (Seq2* only)
+    # ------------------------------------------------------------------
+    # Controls how the latent-physics extrapolation behaves.
+    # "off"          -> completely disabled (legacy behavior)
+    # "full_sequence"-> also produce full-length 1D sequences per split
+    latent_mode: str = "full_sequence"
+    fullseq_mode: Optional[int] = "deploy_split_k" # Or use deploy_split_k
+    fullseq_k: float = 1
+
 # Create a plain dict for downstream code
 DEFAULT_EXP_PARAMS: Dict[str, Any] = DefaultExperimentParams().__dict__
 
@@ -72,7 +90,7 @@ DEFAULT_EXP_PARAMS: Dict[str, Any] = DefaultExperimentParams().__dict__
 # III. LOG LEVEL AND PARALLELISM
 # -------------------------------------------------------------------
 LOG_LEVEL: int    = 1    # 0 → progress bar only; 1 → adds logging.info; 2 → all detailed outputs
-MAX_WORKERS: int  = 5    # Maximum number of workers for parallelism
+MAX_WORKERS: int  = 1    # Maximum number of workers for parallelism
 
 
 # -------------------------------------------------------------------
@@ -94,9 +112,9 @@ else:
     EXTRACTOR_OPTIONS: List[Dict[str, str]] = [
         # {"type": "tcn"},
         # {"type": "rnn"},
-        {"type": "cnn"},
+        # {"type": "cnn"},
         {"type": "aggregate"},
-        {"type": "identity"},
+        # {"type": "identity"},
     ]
     FUSER_OPTIONS: List[Dict[str, str]] = [
         # {"type": "film"},
@@ -283,34 +301,68 @@ EXPERIMENT_CONFIGURATIONS_4: Dict[str, List[Dict[str, Any]]] = {
     ]
 }
 
+import logging
+from typing import Dict, Any, List
+
 def get_experiment_base_config(dataset_name: str, architecture_name: str) -> Dict[str, Any]:
     """
-    Returns the rule-based base configuration (e.g., feature list)
-    for a given dataset and architecture.
-
-    This function formalizes the logic contained in the EXPERIMENT_CONFIGURATIONS
-    dictionary, making it accessible to the new pipeline.
+    Returns the rule-based base configuration (e.g., feature list) for a given
+    dataset and architecture. Preserves existing behavior and adds ARPS support.
     """
-    # This logic mirrors the structure of your existing EXPERIMENT_CONFIGURATIONS
-    if architecture_name in ("Seq2Context", "Seq2PIN", "Seq2Trend", "Seq2Fuser"):
+    arch = str(architecture_name or "").strip()
+
+    # --- 1) Seq2 family (preserve current canonical behavior) ---
+    if arch in ("Seq2Context", "Seq2PIN", "Seq2Trend", "Seq2Fuser"):
         if dataset_name == "VOLVE":
             return {"selected_features": CANON_FEATURES}
         elif dataset_name == "UNISIM_IV":
             return {"selected_features": CANON_FEATURES}
-            
-    elif architecture_name == "Seq2Value":
-        if dataset_name == "VOLVE":
-            return {"selected_features": ["PI", "BORE_GAS_VOL", "BORE_OIL_VOL"]}
-    
-    # You can add the logic for UNISIM and OPSD here if needed
-    elif dataset_name == "UNISIM":
+
+    # --- 2) Darts family (preserve lean covariates) ---
+    if arch.startswith("Darts"):
+        darts_features: List[str] = [
+            "PI",                    # covariate
+            "AVG_DOWNHOLE_PRESSURE", # covariate
+            "Tempo_Inicio_Prod",     # time
+            "BORE_OIL_VOL",          # target (must be included)
+        ]
+        # Ensure target is present (defensive)
+        if "BORE_OIL_VOL" not in darts_features:
+            darts_features.append("BORE_OIL_VOL")
+        return {"selected_features": darts_features}
+
+    # --- 3) Seq2Value (preserve current rule) ---
+    if arch == "Seq2Value" and dataset_name == "VOLVE":
+        return {"selected_features": ["PI", "BORE_GAS_VOL", "BORE_OIL_VOL"]}
+
+    # --- 4) NEW: ARPS canonical backend (minimal & safe) ---
+    # ARPS trains on the physical series; require time + target only.
+    if arch == "Arps_Canonical" or arch.startswith("Arps_"):
+        arps_feats: List[str] = ["Tempo_Inicio_Prod", "BORE_OIL_VOL"]
+        # Defensive: guarantee uniqueness and target presence
+        if "BORE_OIL_VOL" not in arps_feats:
+            arps_feats.append("BORE_OIL_VOL")
+        # De-duplicate preserving order
+        seen, uniq = set(), []
+        for f in arps_feats:
+            if f not in seen and f is not None:
+                uniq.append(f); seen.add(f)
+        return {"selected_features": uniq}
+
+    # --- 5) Additional dataset-specific fallbacks (preserve your originals) ---
+    if dataset_name == "UNISIM":
         return EXPERIMENT_CONFIGURATIONS_3.get("UNISIM", [{}])[0]
-    elif dataset_name == "OPSD":
+    if dataset_name == "OPSD":
         return EXPERIMENT_CONFIGURATIONS_4.get("OPSD", [{}])[0]
-        
-    # Default fallback if no specific rule matches
-    logging.warning(f"No specific base config found for {dataset_name}/{architecture_name}. Returning empty config.")
-    return {}
+
+    # --- 6) Final fallback: keep running with a minimal safe set ---
+    # Prefer not to warn noisily; provide a minimal default that works in most loaders.
+    logging.info(
+        "No specific base config found for %s/%s. Falling back to minimal features.",
+        dataset_name, architecture_name
+    )
+    return {"selected_features": ["Tempo_Inicio_Prod", "BORE_OIL_VOL"]}
+
 
 # =============================================================================
 # X. FEW-SHOT PREDICTION SETTINGS

@@ -1,6 +1,3 @@
-# --------------------------------------------------------------------------- #
-# train_deep_encoder_model – agora aceita “Deep Learning” *e* “Clássicos”     #
-# --------------------------------------------------------------------------- #
 from typing import Dict, Callable, Any
 
 import torch

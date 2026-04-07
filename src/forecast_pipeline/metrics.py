@@ -1,9 +1,17 @@
+# src/forecast_pipeline/metrics.py
 import pandas as pd
 import numpy as np
 
 import logging 
 from typing import List, Dict, Any, Tuple 
 from .config import ( _COLS_TO_DROP_ALWAYS, _COLS_TO_DROP_FILTER, _METRIC_COLS_ORDER, _BASE_ORDER, _FILTER_ORDER )
+import json
+from pathlib import Path
+import pandas as pd
+import json
+import logging
+from pathlib import Path
+from typing import List, Dict, Any
 
 def _process_dataframe(
     df: pd.DataFrame,
@@ -141,16 +149,7 @@ def clean_and_structure_results(
     }
 
 
-import json
-from pathlib import Path
 
-# In src/forecast_pipeline/analytics.py
-
-import pandas as pd
-import json
-import logging
-from pathlib import Path
-from typing import List, Dict, Any
 
 def collate_robust_results(run_output_dir: str | Path) -> pd.DataFrame:
     """
@@ -200,6 +199,8 @@ def collate_robust_results(run_output_dir: str | Path) -> pd.DataFrame:
             "job_hash": data.get("job_hash"),
             "optuna_trial_number": config_to_add.get("optuna_trial_number"),
         }
+
+        print('data.get("key_metrics", {})', data.get("key_metrics", {}))
         
         # Add the easily accessible key metrics for sorting and quick analysis
         flat_row.update(data.get("key_metrics", {}))
@@ -220,5 +221,263 @@ def collate_robust_results(run_output_dir: str | Path) -> pd.DataFrame:
         
     # Convert the list of dictionaries to a DataFrame
     leaderboard_df = pd.DataFrame(all_results)
+
+        # --- Canonicalize column names so Seq2* and Darts look the same downstream ---
+    # epochs
+    if "epochs" not in leaderboard_df.columns and "n_epochs" in leaderboard_df.columns:
+        leaderboard_df["epochs"] = leaderboard_df["n_epochs"]
+
+    # architecture (stable for analysis/plots)
+    if "architecture" not in leaderboard_df.columns and "architecture_name" in leaderboard_df.columns:
+        leaderboard_df["architecture"] = leaderboard_df["architecture_name"]
+
+    # lag_window / horizon (map from Darts' input/output chunk lengths)
+    if "lag_window" not in leaderboard_df.columns and "input_chunk_length" in leaderboard_df.columns:
+        leaderboard_df["lag_window"] = leaderboard_df["input_chunk_length"]
+
+    if "horizon" not in leaderboard_df.columns and "output_chunk_length" in leaderboard_df.columns:
+        leaderboard_df["horizon"] = leaderboard_df["output_chunk_length"]
+
     
     return leaderboard_df
+
+
+# forecast_pipeline/analytics.py
+import json
+import logging
+from pathlib import Path
+from typing import List, Dict, Any
+import pandas as pd
+
+def _smape_from_global(obj: Any) -> float | None:
+    """Extracts SMAPE from a 'global_metrics_*' block (dict)."""
+    try:
+        if isinstance(obj, dict) and "SMAPE" in obj:
+            return float(obj["SMAPE"])
+    except Exception:
+        pass
+    return None
+
+def _smape_from_list_or_df(obj: Any) -> float | None:
+    """
+    Extracts SMAPE from an 'aggregated/cumulative_metrics_*' block, which can be:
+      - a list[dict] with a single row
+      - a serialized dict (e.g., {'SMAPE':[...]} or {'SMAPE': value})
+      - a serialized DataFrame (uncommon, but handled defensively)
+    """
+    try:
+        # list of dicts
+        if isinstance(obj, list) and obj and isinstance(obj[0], dict):
+            if "SMAPE" in obj[0]:
+                return float(obj[0]["SMAPE"])
+            return None
+        # dict
+        if isinstance(obj, dict):
+            if "SMAPE" in obj:
+                v = obj["SMAPE"]
+                if isinstance(v, (list, tuple)) and v:
+                    return float(v[0])
+                return float(v)
+            # something like {'data': [{'SMAPE': ...}]}
+            for v in obj.values():
+                if isinstance(v, list) and v and isinstance(v[0], dict) and "SMAPE" in v[0]:
+                    return float(v[0]["SMAPE"])
+        # DataFrame (if already in memory as a DF)
+        if isinstance(obj, pd.DataFrame) and not obj.empty and "SMAPE" in obj.columns:
+            return float(obj["SMAPE"].iloc[0])
+    except Exception:
+        return None
+    return None
+
+def _pick_test_val_metrics(data: dict) -> dict:
+    """
+    Reads aggregated/cumulative SMAPE for TEST and VAL from within 'results' (preferred),
+    with a fallback to root-level blocks if they exist.
+    """
+    out = {}
+
+    res = data.get("results") or {}
+
+    # ---- VALIDATION ----
+    # 1) key_metrics already provides val_smape_* -> do not overwrite if it exists
+    # 2) fallback to global/cumulative metrics within 'results'
+    val_agg = _smape_from_global(res.get("global_metrics_val"))
+    if val_agg is None:
+        val_agg = _smape_from_list_or_df(res.get("aggregated_metrics_val"))
+    out["val_smape_agg_fallback"] = val_agg
+
+    val_cum = _smape_from_list_or_df(res.get("cumulative_metrics_val"))
+    if val_cum is None:
+        # sometimes only 'global' exists; as a last resort, reuse it
+        val_cum = _smape_from_global(res.get("global_metrics_val"))
+    out["val_smape_cum_fallback"] = val_cum
+
+    # ---- TEST ----
+    test_agg = _smape_from_global(res.get("global_metrics_test"))
+    if test_agg is None:
+        test_agg = _smape_from_list_or_df(res.get("aggregated_metrics_test"))
+    out["test_smape_agg"] = test_agg
+
+    test_cum = _smape_from_list_or_df(res.get("cumulative_metrics_test"))
+    if test_cum is None:
+        # last resort: use global
+        test_cum = _smape_from_global(res.get("global_metrics_test"))
+    out["test_smape_cum"] = test_cum
+
+    return out
+
+def collate_robust_results(
+    run_output_dir: str | Path,
+    *,
+    required_objectives: tuple[str, ...] = ("val_smape_agg", "val_smape_cum"),
+    allow_missing_objectives: bool = False,
+) -> pd.DataFrame:
+    """
+    Collate robust results from run_output_dir/results/*.json into a leaderboard DataFrame.
+
+    Guarantees:
+      - only includes status == "success"
+      - optuna_trial_number coerced to int (rows without it are dropped)
+      - objectives are numeric + finite (unless allow_missing_objectives=True)
+      - safe against malformed JSON and missing keys
+    """
+    run_path = Path(run_output_dir)
+    results_dir = run_path / "results"
+
+    if not results_dir.is_dir():
+        logging.warning("Results directory not found at: %s", results_dir)
+        return pd.DataFrame()
+
+    files = sorted(results_dir.glob("*.json"))
+    logging.info("Found %d result files in %s. Processing...", len(files), results_dir)
+
+    rows: List[Dict[str, Any]] = []
+
+    # keys we never want overwritten by key_metrics
+    _protected_keys = {"experiment_id", "well", "job_hash", "optuna_trial_number"}
+
+    # config keys we should skip (heavy / nested / irrelevant)
+    excluded_cfg = {"selected_features", "extractor_config", "fuser_config", "run_output_dir"}
+
+    for jf in files:
+        try:
+            raw = jf.read_text(encoding="utf-8")
+            data = json.loads(raw)
+        except Exception as e:
+            logging.warning("Could not decode JSON '%s': %s", jf, e)
+            continue
+
+        if not isinstance(data, dict):
+            continue
+        if data.get("status") != "success":
+            continue
+
+        cfg = data.get("config") or {}
+        if not isinstance(cfg, dict):
+            cfg = {}
+
+        # ---- optuna_trial_number: strong coercion to int ----
+        tn = cfg.get("optuna_trial_number", None)
+        try:
+            tn = int(tn) if tn is not None else None
+        except Exception:
+            tn = None
+
+        row: Dict[str, Any] = {
+            "experiment_id": data.get("experiment_id"),
+            "well": data.get("well"),
+            "job_hash": data.get("job_hash"),
+            "optuna_trial_number": tn,
+        }
+
+        # 1) validation metrics from key_metrics (safe merge; don't overwrite protected fields)
+        km = data.get("key_metrics") or {}
+        if isinstance(km, dict):
+            for k, v in km.items():
+                if k in _protected_keys:
+                    continue
+                row[k] = v
+
+        # 2) fallbacks for metrics via _pick_test_val_metrics (if you have it)
+        try:
+            falls = _pick_test_val_metrics(data)  # type: ignore[name-defined]
+            if not isinstance(falls, dict):
+                falls = {}
+        except Exception as e:
+            logging.warning("Fallback metric picker failed for '%s': %s", jf, e)
+            falls = {}
+
+        if row.get("val_smape_agg") is None:
+            row["val_smape_agg"] = falls.get("val_smape_agg_fallback")
+        if row.get("val_smape_cum") is None:
+            row["val_smape_cum"] = falls.get("val_smape_cum_fallback")
+
+        # always attach test metrics if present (ok if None)
+        row["test_smape_agg"] = falls.get("test_smape_agg")
+        row["test_smape_cum"] = falls.get("test_smape_cum")
+
+        # 3) shallow hyperparameters from cfg
+        for k, v in cfg.items():
+            if k in excluded_cfg:
+                continue
+            if isinstance(v, (dict, list)):
+                continue
+            # don't overwrite protected keys coming from top-level row
+            if k in _protected_keys:
+                continue
+            row[k] = v
+
+        rows.append(row)
+
+    if not rows:
+        logging.warning("No successful jobs found to create a leaderboard.")
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows)
+
+    # ---- Drop rows without trial_number (cannot report to Optuna) ----
+    if "optuna_trial_number" not in df.columns:
+        logging.warning("Missing optuna_trial_number column after collation. Returning empty df.")
+        return pd.DataFrame()
+
+    df = df[df["optuna_trial_number"].notna()].copy()
+    if df.empty:
+        logging.warning("All rows missing optuna_trial_number. Returning empty df.")
+        return pd.DataFrame()
+
+    # ensure int dtype
+    df["optuna_trial_number"] = pd.to_numeric(df["optuna_trial_number"], errors="coerce")
+    df = df[df["optuna_trial_number"].notna()].copy()
+    df["optuna_trial_number"] = df["optuna_trial_number"].astype(int)
+
+    # ---- Standardize column names ----
+    if "epochs" not in df.columns and "n_epochs" in df.columns:
+        df["epochs"] = df["n_epochs"]
+    if "architecture" not in df.columns and "architecture_name" in df.columns:
+        df["architecture"] = df["architecture_name"]
+    if "lag_window" not in df.columns and "input_chunk_length" in df.columns:
+        df["lag_window"] = df["input_chunk_length"]
+    if "horizon" not in df.columns and "output_chunk_length" in df.columns:
+        df["horizon"] = df["output_chunk_length"]
+
+    # ---- Ensure numeric dtypes for metrics columns ----
+    metric_cols = ("val_smape_agg", "val_smape_cum", "test_smape_agg", "test_smape_cum")
+    for col in metric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # ---- Enforce finite objectives (to avoid tell() with NaN/inf) ----
+    for obj in required_objectives:
+        if obj not in df.columns:
+            df[obj] = np.nan
+
+    if not allow_missing_objectives:
+        mask = np.isfinite(df[list(required_objectives)].to_numpy(dtype=float)).all(axis=1)
+        df = df[mask].copy()
+
+    # Optional: stable ordering
+    df = df.sort_values("optuna_trial_number").reset_index(drop=True)
+
+    return df
+
+

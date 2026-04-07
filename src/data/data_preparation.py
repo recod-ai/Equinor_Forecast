@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
-
+from pykalman import KalmanFilter
+import numpy as np
+import pandas as pd
+from typing import List
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 
 
@@ -649,30 +652,6 @@ def plot_data_sequences(y_train, y_test, window_size, index=None):
     
     
     
-
-from pykalman import KalmanFilter
-import numpy as np
-import pandas as pd
-from typing import List
-
-
-# def apply_custom_kalman_filter(data, process_var=1e-5, measurement_var=1e-3):
-#     # Definir a matriz de transição e a variância do processo
-#     transition_matrix = [[1]]  # assume uma série unidimensional, onde o valor depende do anterior
-#     observation_matrix = [[1]]  # mede o estado atual
-
-#     # Inicializar o filtro de Kalman com variâncias de processo e medição
-#     kf = KalmanFilter(
-#         transition_matrices=transition_matrix,
-#         observation_matrices=observation_matrix,
-#         transition_covariance=process_var * np.eye(1),
-#         observation_covariance=measurement_var * np.eye(1),
-#         initial_state_mean=0
-#     )
-
-#     # Aplicar o filtro de Kalman nos dados
-#     data_kalman, _ = kf.filter(data)
-#     return data_kalman.flatten()  # Retorna como uma lista
 
 def apply_kalman_filter(
     df: pd.DataFrame,

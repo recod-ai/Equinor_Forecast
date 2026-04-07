@@ -1,15 +1,19 @@
+# src/common/common.py
 from __future__ import annotations
-from typing import List, Dict, Tuple, Union, Sequence, Callable
 
-import pandas as pd
-import numpy as np
+from dataclasses import dataclass
+import logging
+import pickle
+import random
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union, Mapping
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
 from evaluation.evaluation import plot_predictions
 
-import numpy as np
-import pandas as pd
-import random
-import logging
+
 
 # augment_phys.py
 # ---------------------------------------------------------------------------
@@ -34,164 +38,6 @@ def _concat(orig: np.ndarray, synt: List[np.ndarray], like):
         # reconstrói mesmo tipo/índices – assume reset de índice é ok para treino
         return type(like)(out, columns=getattr(like, "columns", None))
     return out
-
-
-# ------------------------------ técnicas -----------------------------------
-def _scale_decline(
-    X: np.ndarray,
-    y: np.ndarray,
-    feat_idx: Dict[str, int],
-    factors: Sequence[float]
-) -> Tuple[List[np.ndarray], List[np.ndarray]]:
-    """
-    Multiplica Q, ΔP (e opcionalmente gas/water) por 1/fator para
-    simular estrangulamentos ou regimes pobres de pressão.
-    Mantém PI fixo (não escalona).
-    """
-    synth_X, synth_y = [], []
-    q_idx   = feat_idx["BORE_OIL_VOL"]
-    adp_idx  = feat_idx.get("AVG_DOWNHOLE_PRESSURE")       # pode não existir em todos os datasets
-    gas_idx = feat_idx.get("BORE_GAS_VOL")
-    pi_idx = feat_idx.get("PI")
-
-    
-    for f in factors:
-        X_new = X.copy()
-        y_new = y.copy()
-        X_new[..., q_idx]   /= f
-        y_new       /= f
-        if adp_idx is not None:
-            X_new[..., adp_idx]  /= f
-        if gas_idx is not None:
-            X_new[..., gas_idx] /= f   # mantém RGO constante
-        if pi_idx is not None:
-            X_new[..., pi_idx] /= f
-        synth_X.append(X_new); synth_y.append(y_new)
-    return synth_X, synth_y
-
-
-def _jitter_pressure(
-    X: np.ndarray,
-    feat_idx: Dict[str, int],
-    sigma_psi: float = 10.0
-) -> np.ndarray:
-    """
-    Adiciona ruído gaussiano leve às pressões para simular incerteza de sensor.
-    """
-    pf_idx = feat_idx.get("AVG_WHP_P")
-    pr_idx = feat_idx.get("AVG_DOWNHOLE_PRESSURE")
-    if pf_idx is None and pr_idx is None:
-        return X
-    X_new = X.copy()
-    noise = np.random.normal(0.0, sigma_psi, size=X_new[..., 0].shape)
-    if pf_idx is not None:
-        X_new[..., pf_idx] += noise
-    if pr_idx is not None:
-        X_new[..., pr_idx] += noise
-    return X_new
-
-
-def _warp_decline(
-    X: np.ndarray,
-    y: np.ndarray,
-    feat_idx: Dict[str, int],
-    alpha_range=(0.6, 1.0)
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Aplica “declínio tardio’’: a partir de um ponto aleatório,
-    multiplica Q e ΔP por α∈(0.6-1.0).  Mantém PI.
-    """
-    T = X.shape[1]
-    cut = random.randint(T // 3, T - 1)      # não muito cedo
-    α = random.uniform(*alpha_range)
-
-    X_new, y_new = X.copy(), y.copy()
-    q_idx  = feat_idx["BORE_OIL_VOL"]
-    dp_idx = feat_idx.get("delta_P")
-
-    X_new[:, cut:, q_idx]  *= α
-    y_new[:, cut:]         *= α
-    if dp_idx is not None:
-        X_new[:, cut:, dp_idx] *= α
-    return X_new, y_new
-
-
-def _block_bootstrap(
-    X: np.ndarray,
-    y: np.ndarray,
-    n_samples: int
-) -> Tuple[List[np.ndarray], List[np.ndarray]]:
-    """
-    Re-amostra janelas inteiras (block bootstrap).  Preserva correlação
-    intrajanel a preço quase zero de implementação.
-    """
-    idx = np.random.randint(0, X.shape[0], size=n_samples)
-    return [X[idx]], [y[idx]]
-
-
-# -------------------------- função principal --------------------------------
-def augment_phys(
-    X_train: Union[pd.DataFrame, np.ndarray],
-    y_train: Union[pd.Series,  np.ndarray],
-    *,
-    feature_indices: Dict[str, int],
-    scale_factors: Sequence[float] = (1.5, 2, 3, 5),
-    use_scale: bool = True,
-    use_jitter: bool = True,
-    use_decline_warp: bool = True,
-    n_bootstrap: int = 0,
-    sigma_pressure: float = 10.0,
-    random_state: int | None = None
-) -> Tuple[Union[pd.DataFrame, np.ndarray],
-           Union[pd.Series,   np.ndarray]]:
-    """
-    Augmenta dados físicos de forma incremental.  Cada técnica pode ser
-    ligada/desligada por flags.
-
-    Parameters
-    ----------
-    X_train , y_train : tipos iguais aos do pipeline (np.ndarray ou DataFrame)
-                        • X window shape esperado: (N, T, F)
-                        • y shape              : (N, T_out)
-    feature_indices   : mapeia nome da feature → índice na dimensão F
-                        {'BORE_OIL_VOL': 0, 'delta_P': 2, ...}
-    use_* flags       : ativa técnicas individuais
-    n_bootstrap       : nº extra de janelas geradas por bootstrap
-    sigma_pressure    : desvio (psi) para jitter de pressões
-    """
-    if random_state is not None:
-        np.random.seed(random_state)
-        random.seed(random_state)
-
-    X = _ensure_ndarray(X_train)
-    y = _ensure_ndarray(y_train)
-
-    synth_X, synth_y = [], []          # listas de novos exemplos
-
-    # ---- 1. escala multiplicativa (declínio/estrangulamento) --------------
-    if use_scale and scale_factors:
-        sx, sy = _scale_decline(X, y, feature_indices, scale_factors)
-        synth_X.extend(sx); synth_y.extend(sy)
-
-    # ---- 2. jitter em pressão ---------------------------------------------
-    if use_jitter:
-        X_jit = _jitter_pressure(X, feature_indices, sigma_pressure)
-        synth_X.append(X_jit); synth_y.append(y.copy())
-
-    # ---- 3. warp de declínio ----------------------------------------------
-    if use_decline_warp:
-        Xw, yw = _warp_decline(X, y, feature_indices)
-        synth_X.append(Xw); synth_y.append(yw)
-
-    # ---- 4. block bootstrap ------------------------------------------------
-    if n_bootstrap > 0:
-        bx, by = _block_bootstrap(X, y, n_bootstrap)
-        synth_X.extend(bx); synth_y.extend(by)
-
-    # ---------------- concatena e devolve no mesmo tipo --------------------
-    X_aug = _concat(X, synth_X, X_train)
-    y_aug = _concat(y, synth_y, y_train)
-    return X_aug, y_aug
 
 
 
@@ -320,86 +166,7 @@ def create_internal_validation_set_from_disk(
     return X_train_fit, y_train_fit, X_val_internal, y_val_internal
 
 
-# def augment_with_synthetic_samples(
-#     X_train: np.ndarray,
-#     y_train: np.ndarray,
-#     scales: List[float] = [1.5, 2, 3, 5, 7, 9, 11, 13, 15, 17],
-#     data_sample: float = 0.9,
-#     random_state: int = 42,
-#     save_metadata_path: Optional[str] = "Meta_validation"  # Parâmetro opcional para salvar metadados
-# ) -> Tuple[np.ndarray, np.ndarray]:
-#     """
-#     Aumenta os dados com versões escaladas, preservando a ordem cronológica,
-#     e opcionalmente salva os metadados dos blocos em disco.
 
-#     Args:
-#         X_train: Dados de treino originais (ordenados cronologicamente).
-#         y_train: Rótulos de treino originais.
-#         scales: Lista de fatores de escala para gerar dados sintéticos.
-#         data_sample: Fração de amostras a serem selecionadas de cada bloco.
-#         random_state: Semente para reprodutibilidade.
-#         save_metadata_path: Se fornecido, salva os índices de fim de bloco neste caminho.
-
-#     Returns:
-#         Um novo conjunto de treino e rótulos aumentados.
-#     """
-    
-#     rng = np.random.RandomState(random_state)
-
-#     # Coleta as partes dos dados aumentados
-#     X_augmented_list = [X_train]
-#     y_augmented_list = [y_train]
-
-#     num_original_samples = X_train.shape[0]
-
-#     for scale in scales:
-#         # Gera o bloco sintético completo
-#         X_scaled = X_train / scale
-#         y_scaled = y_train / scale
-
-#         # Determina quantos índices selecionar
-#         num_to_sample = int(num_original_samples * data_sample)
-#         if num_to_sample == 0:
-#             continue # Pula se a fração for muito pequena e resultar em 0 amostras
-
-#         # 1. Seleciona `k` índices aleatórios do bloco sintético.
-#         chosen_indices = rng.choice(num_original_samples, size=num_to_sample, replace=False)
-
-#         # 2. ORDENA os índices selecionados para preservar a ordem cronológica.
-#         sorted_indices = np.sort(chosen_indices)
-
-#         # 3. Usa os índices ordenados para criar a subamostra.
-#         X_sub_ordered = X_scaled[sorted_indices]
-#         y_sub_ordered = y_scaled[sorted_indices]
-
-#         X_augmented_list.append(X_sub_ordered)
-#         y_augmented_list.append(y_sub_ordered)
-        
-#     # --- Lógica de Metadados ---
-#     # É executada mesmo se não for salvar, pois é leve.
-#     block_sizes = [len(part) for part in X_augmented_list]
-#     end_indices = np.cumsum(block_sizes).tolist()
-    
-#     # Salva os metadados se um caminho for fornecido
-#     if save_metadata_path:
-#         metadata = {"end_indices": end_indices}
-#         try:
-#             with open(save_metadata_path, 'wb') as f:
-#                 pickle.dump(metadata, f)
-#         except IOError as e:
-#             print(f"Erro ao salvar metadados em {save_metadata_path}: {e}")
-
-#     # --- Concatenação Final ---
-#     X_final = np.concatenate(X_augmented_list, axis=0)
-#     y_final = np.concatenate(y_augmented_list, axis=0)
-
-
-#     return X_final, y_final
-
-
-import numpy as np
-import pickle
-from typing import List, Tuple, Optional, Dict, Any
 
 def augment_with_synthetic_samples(
     X_train: np.ndarray,
@@ -411,7 +178,7 @@ def augment_with_synthetic_samples(
     augmentation_modes: List[str] = ['scale'],
     original_replication_factor: int = 1,
     # --- Parâmetros Específicos do Modo 'scale' ---
-    scales: List[float] = [1.5, 2, 3, 5, 7, 9, 11, 13, 15, 17],
+    scales: List[float] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     # --- Parâmetros Específicos do Modo 'shift' ---
     shift_std_fraction: float = 0.1,
     num_shift_blocks: int = 5,  # Quantos blocos diferentes de 'shift' gerar
@@ -538,39 +305,6 @@ def augment_with_synthetic_samples(
     return X_final, y_final
 
 
-def create_synthetic_samples(X_train, y_train, scales=[2, 3, 5]):
-    """
-    Generate synthetic samples by scaling down the amplitude of X_train and y_train.
-    
-    Args:
-        X_train (DataFrame): Original feature set.
-        y_train (Series or array): Original target values.
-        scales (list): List of scales to use for amplitude reduction.
-        
-    Returns:
-        X_train_augmented (DataFrame): Original and synthetic feature set.
-        y_train_augmented (Series): Original and synthetic target values.
-    """
-    # Initialize lists to hold the augmented data
-    X_synthetic = [X_train]
-    y_synthetic = [y_train]
-
-    # Loop over each scale to create synthetic data
-    for scale in scales:
-        # Scale down X_train and y_train by the scale factor
-        X_scaled = X_train / scale
-        y_scaled = y_train / scale
-
-        # Append the scaled data to the synthetic data lists
-        X_synthetic.append(X_scaled)
-        y_synthetic.append(y_scaled)
-
-    # Concatenate original and synthetic data
-    X_train_augmented = pd.concat(X_synthetic, axis=0).reset_index(drop=True)
-    y_train_augmented = pd.concat(y_synthetic, axis=0).reset_index(drop=True)
-
-    return X_train_augmented, y_train_augmented
-
 
 def split_time_series(
     df: pd.DataFrame,
@@ -583,3 +317,367 @@ def split_time_series(
     df_train = df.iloc[:-n_test]
     df_test  = df.iloc[-n_test:]
     return df_train, df_test
+
+
+
+
+
+# =============================================================================
+# ONE-BUTTON METHODS (single source of truth)
+# =============================================================================
+
+# Canonical families (used by campaign generator)
+FAMILY_SEQ2 = "Seq2"
+FAMILY_DARTS = "Darts"
+FAMILY_ARPS = "Arps"
+ALL_FAMILIES = {FAMILY_SEQ2, FAMILY_DARTS, FAMILY_ARPS}
+
+# Canonical method keys (stable public API)
+METHOD_ARPS_PURE = "ARPS_PURE"
+METHOD_PINN_PURE = "PINN_PURE"
+METHOD_DARTS_PURE = "DARTS_PURE"
+METHOD_PINN_PLUS_ANALYTIC = "PINN_PLUS_ANALYTIC"
+METHOD_ARPS_ENSEMBLE = "ARPS_ENSEMBLE"
+
+ALL_METHODS = {
+    METHOD_ARPS_PURE,
+    METHOD_PINN_PURE,
+    METHOD_DARTS_PURE,
+    METHOD_PINN_PLUS_ANALYTIC,
+    METHOD_ARPS_ENSEMBLE,
+}
+
+
+@dataclass(frozen=True)
+class MethodSpec:
+    """
+    Defines a single top-level forecasting method (one-button selection).
+
+    - arch: which validation/inference family to route to ("arps" | "seq2" | "darts")
+    - pipeline_preset: "OFF" or a valid PIPELINE_PRESET key (e.g., "PINN_PLUS_ANALYTIC")
+    - architecture_name: optional (e.g., "Seq2PIN" for seq2 family)
+    """
+    key: str
+    arch: str                 # "arps" | "seq2" | "darts"
+    pipeline_preset: str      # "OFF" or a valid PIPELINE_PRESET key
+    architecture_name: Optional[str] = None
+    description: str = ""
+
+
+# ---- Canonical method catalog (your 5 modes) ----
+METHOD_CATALOG: Dict[str, MethodSpec] = {
+    METHOD_ARPS_PURE: MethodSpec(
+        key=METHOD_ARPS_PURE,
+        arch="arps",
+        pipeline_preset="OFF",
+        architecture_name=None,
+        description="Pure ARPS (single curve). No ensemble. No offline-analytic coupling.",
+    ),
+    METHOD_PINN_PURE: MethodSpec(
+        key=METHOD_PINN_PURE,
+        arch="seq2",
+        pipeline_preset="OFF",
+        architecture_name="Seq2PIN",
+        description="Pure PINN (Seq2) inference. No analytic coupling.",
+    ),
+    METHOD_DARTS_PURE: MethodSpec(
+        key=METHOD_DARTS_PURE,
+        arch="darts",
+        pipeline_preset="OFF",
+        architecture_name=None,
+        description="Pure Darts inference. No analytic coupling.",
+    ),
+    METHOD_PINN_PLUS_ANALYTIC: MethodSpec(
+        key=METHOD_PINN_PLUS_ANALYTIC,
+        arch="seq2",
+        pipeline_preset="PINN_PLUS_ANALYTIC",
+        architecture_name="Seq2PIN",
+        description="PINN + Offline-Analytic coupling (spaghetti) using ARPS coupling logic.",
+    ),
+    METHOD_ARPS_ENSEMBLE: MethodSpec(
+        key=METHOD_ARPS_ENSEMBLE,
+        arch="arps",
+        pipeline_preset="ARPS_ENSEMBLE_SPAGHETTI",
+        architecture_name=None,
+        description="Pure ARPS canonical fit + theta sampling spaghetti ensemble (optional trimming + aggregation).",
+    ),
+}
+
+
+# =============================================================================
+# Resolution helpers (Validation + HPO)
+# =============================================================================
+
+def _validate_family(family: str) -> str:
+    f = str(family).strip()
+    if f not in ALL_FAMILIES:
+        raise ValueError(f"Unknown family={f!r}. Choose one of: {sorted(ALL_FAMILIES)}")
+    return f
+
+
+def resolve_method(method: str, *, allow_aliases: bool = True) -> MethodSpec:
+    """
+    Validation notebook resolver:
+      METHOD -> MethodSpec(arch, preset, architecture_name)
+
+    Canonical keys:
+      ARPS_PURE | PINN_PURE | DARTS_PURE | PINN_PLUS_ANALYTIC | ARPS_ENSEMBLE
+
+    Aliases (optional):
+      "arps" -> ARPS_PURE
+      "seq2" / "pinn" -> PINN_PURE
+      "darts" -> DARTS_PURE
+      "pinn+analytic" -> PINN_PLUS_ANALYTIC
+      "arps_ensemble" -> ARPS_ENSEMBLE
+    """
+    if method is None:
+        raise ValueError("METHOD is None. Choose a valid method key.")
+
+    m = str(method).strip()
+    key = m.upper()
+
+    if allow_aliases:
+        aliases = {
+            "ARPS": METHOD_ARPS_PURE,
+            "SEQ2": METHOD_PINN_PURE,
+            "PINN": METHOD_PINN_PURE,
+            "DARTS": METHOD_DARTS_PURE,
+            "PINN+ANALYTIC": METHOD_PINN_PLUS_ANALYTIC,
+            "ARPS_ENSEMBLE": METHOD_ARPS_ENSEMBLE,
+        }
+        key = aliases.get(key, key)
+
+    spec = METHOD_CATALOG.get(key)
+    if spec is None:
+        valid = ", ".join(sorted(METHOD_CATALOG.keys()))
+        raise ValueError(f"Unknown METHOD={method!r}. Valid options: {valid}")
+    return spec
+
+
+def summarize_methods() -> str:
+    lines = ["Available METHODS:"]
+    for k in sorted(METHOD_CATALOG.keys()):
+        s = METHOD_CATALOG[k]
+        lines.append(f"  - {k}: arch={s.arch}, preset={s.pipeline_preset} :: {s.description}")
+    return "\n".join(lines)
+
+
+# =============================================================================
+# HPO: family-aware method plan + job_defaults builder
+# =============================================================================
+
+def method_is_compatible_with_family(method: str, family: str) -> bool:
+    """
+    Campaign generator compatibility:
+      - Seq2: PINN_PURE or PINN_PLUS_ANALYTIC
+      - Darts: DARTS_PURE
+      - Arps: ARPS_PURE or ARPS_ENSEMBLE
+    """
+    spec = resolve_method(method, allow_aliases=True)
+    fam = _validate_family(family)
+
+    if fam == FAMILY_SEQ2:
+        return spec.key in (METHOD_PINN_PURE, METHOD_PINN_PLUS_ANALYTIC)
+    if fam == FAMILY_DARTS:
+        return spec.key in (METHOD_DARTS_PURE,)
+    if fam == FAMILY_ARPS:
+        return spec.key in (METHOD_ARPS_PURE, METHOD_ARPS_ENSEMBLE)
+    return False
+
+
+def default_fallback_method_for_family(family: str) -> str:
+    fam = _validate_family(family)
+    if fam == FAMILY_SEQ2:
+        return METHOD_PINN_PURE
+    if fam == FAMILY_DARTS:
+        return METHOD_DARTS_PURE
+    if fam == FAMILY_ARPS:
+        return METHOD_ARPS_PURE
+    return METHOD_PINN_PURE
+
+
+def resolve_method_for_family(
+    *,
+    method_by_family: Mapping[str, str],
+    family: str,
+    policy: str = "error",
+) -> MethodSpec:
+    """
+    HPO resolver:
+      METHOD_BY_FAMILY + family -> MethodSpec
+
+    policy:
+      - "error": raise if missing/incompatible
+      - "fallback": fallback to pure method for that family
+    """
+    fam = _validate_family(family)
+    pol = str(policy).strip().lower()
+    if pol not in ("error", "fallback"):
+        raise ValueError("policy must be 'error' or 'fallback'")
+
+    raw = method_by_family.get(fam)
+    if raw is None:
+        if pol == "fallback":
+            return resolve_method(default_fallback_method_for_family(fam))
+        raise ValueError(f"METHOD_BY_FAMILY is missing an entry for family={fam!r}")
+
+    spec = resolve_method(raw, allow_aliases=True)
+    if not method_is_compatible_with_family(spec.key, fam):
+        if pol == "fallback":
+            return resolve_method(default_fallback_method_for_family(fam))
+        raise ValueError(f"METHOD={spec.key!r} is not compatible with family={fam!r}")
+
+    return spec
+
+
+def build_methods_plan_for_active_families(
+    *,
+    active_families: List[str],
+    method_by_family: Mapping[str, str],
+    policy: str = "error",
+) -> Dict[str, MethodSpec]:
+    """
+    Convenience:
+      active_families + METHOD_BY_FAMILY -> {family: MethodSpec}
+    """
+    plan: Dict[str, MethodSpec] = {}
+    for fam in active_families:
+        f = _validate_family(fam)
+        plan[f] = resolve_method_for_family(method_by_family=method_by_family, family=f, policy=policy)
+    return plan
+
+
+# -----------------------------------------------------------------------------
+# Deep merge utilities (predictable, no mutation)
+# -----------------------------------------------------------------------------
+def deep_merge_dicts(base: Mapping[str, Any], override: Mapping[str, Any]) -> Dict[str, Any]:
+    """
+    Recursively merge dictionaries:
+      - dict + dict => merge keys recursively
+      - otherwise => override wins
+    Returns a NEW dict.
+    """
+    out: Dict[str, Any] = dict(base)
+    for k, v in override.items():
+        if k in out and isinstance(out[k], dict) and isinstance(v, Mapping):
+            out[k] = deep_merge_dicts(out[k], v)  # type: ignore[arg-type]
+        else:
+            out[k] = v
+    return out
+
+
+# -----------------------------------------------------------------------------
+# Non-breaking behavior controls
+# -----------------------------------------------------------------------------
+def minimal_off_overrides() -> Dict[str, Any]:
+    """
+    Minimal "pure mode" overrides for HPO YAMLs.
+    NOTE: we do NOT touch aggregation_* fields to avoid breaking existing assumptions.
+    """
+    return {
+        "latent_mode": "off",
+        "latent_cfg": {"mode": "off"},
+    }
+
+
+def sanitize_job_defaults(
+    job_defaults: Mapping[str, Any],
+    *,
+    preserve_legacy_fields: bool = True,
+    family: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Default is NON-BREAKING:
+      preserve_legacy_fields=True keeps any leftover blocks (e.g., latent_cfg keys).
+
+    If you ever want strict cleanup later, set preserve_legacy_fields=False and
+    expand this function (Patch 2+).
+    """
+    out = dict(job_defaults)
+
+    if preserve_legacy_fields:
+        return out
+
+    # Optional strict cleanup:
+    fam = _validate_family(family) if family is not None else None
+    if fam == FAMILY_DARTS:
+        out.pop("arps_ensemble", None)
+
+    return out
+
+
+# -----------------------------------------------------------------------------
+# Build per-family job_defaults: base_user + preset(job_defaults) + minimal_off
+# -----------------------------------------------------------------------------
+def build_job_defaults_effective_for_family(
+    *,
+    base_user: Mapping[str, Any],
+    family: str,
+    spec: MethodSpec,
+    pipeline_presets: Mapping[str, Any],
+    preserve_legacy_fields: bool = True,
+) -> Dict[str, Any]:
+    """
+    Merge order (later wins):
+      1) base_user
+      2) preset job_defaults (if spec.pipeline_preset != "OFF")
+      3) minimal_off_overrides (if spec.pipeline_preset == "OFF")
+
+    We DO NOT set 'architecture_name' here; caller sets it per-architecture.
+    """
+    fam = _validate_family(family)
+    jd = dict(base_user)
+
+    # 2) preset job_defaults (specialized methods)
+    if spec.pipeline_preset and str(spec.pipeline_preset).upper() != "OFF":
+        preset_name = spec.pipeline_preset
+        if preset_name not in pipeline_presets:
+            raise ValueError(
+                f"Preset {preset_name!r} required by METHOD={spec.key!r} not found in PIPELINE_PRESETS. "
+                f"Available: {sorted(pipeline_presets)}"
+            )
+
+        preset_obj = pipeline_presets[preset_name]
+
+        # preset_obj can be PipelinePreset dataclass or dict-like
+        preset_overrides = getattr(preset_obj, "overrides", None)
+        if preset_overrides is None and isinstance(preset_obj, Mapping):
+            preset_overrides = preset_obj.get("overrides", None)
+
+        preset_jd: Dict[str, Any] = {}
+        if isinstance(preset_overrides, Mapping):
+            preset_jd = dict(preset_overrides.get("job_defaults", {}) or {})
+
+        jd = deep_merge_dicts(jd, preset_jd)
+
+    # 3) pure modes: explicitly force latent off (minimal)
+    else:
+        jd = deep_merge_dicts(jd, minimal_off_overrides())
+
+    # Ensure user knobs win over presets for HPO (non-breaking, explicit)
+    USER_KNOBS_THAT_MUST_WIN = {
+        "seed",
+        "plot",
+        "lag_window",
+        "horizon",
+        "patience",
+        "test_size",
+        "val_size",
+        "feature_kind",
+        "use_known_good",
+        "evaluate_by_slice",
+        "aggregation_quantiles",
+        "scenario",
+        "band",
+        "show_components",
+    }
+    
+    for k in USER_KNOBS_THAT_MUST_WIN:
+        if k in base_user:
+            jd[k] = base_user[k]
+
+
+    # non-breaking sanitizer
+    jd = sanitize_job_defaults(jd, preserve_legacy_fields=preserve_legacy_fields, family=fam)
+    return jd
+

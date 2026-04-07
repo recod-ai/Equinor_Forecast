@@ -1,30 +1,65 @@
 # src/training/train_models.py
+# src/training/train_models.py
+
+# flake8: noqa: E402
+"""Core model training and evaluation logic."""
+
+# --- Standard Library Imports ---
+from __future__ import annotations
+import copy
+import logging
+import math
 import os
 import time
-import math
-import  logging
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+# --- Third-Party Imports ---
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
-from typing import Any, Dict, Tuple, Union, List, Optional
+import statsmodels.api as sm
 import tensorflow as tf
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import Callback, EarlyStopping, ReduceLROnPlateau, LearningRateScheduler, ModelCheckpoint
-from models import create_model
-import tensorflow_addons as tfa  # For AdamW optimizer
-
 import tensorflow_addons as tfa
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
-from typing import List, Tuple, Union
-
-from evaluation.evaluation import history_evaluation
-
-
 from sklearn.model_selection import train_test_split
+from tensorflow.keras.callbacks import (
+    Callback,
+    EarlyStopping,
+    LearningRateScheduler,
+    ModelCheckpoint,
+    ReduceLROnPlateau,
+)
+from tensorflow.keras.optimizers import Adam
 
-# Otimizadores opcionais
+# --- Local Application Imports ---
+from evaluation.evaluation import history_evaluation
+from models import create_model
+
+# --- Optional Imports ---
+# Gracefully import optional optimizers like LAMB
 try:
     from tensorflow_addons.optimizers import LAMB
 except ImportError:
     LAMB = None
+
+# --- Module-level Configuration ---
+# Set Matplotlib log level to warning to reduce startup verbosity
+matplotlib.set_loglevel("warning")
+
+# =============================================================================================================================================================
+#                      --- Module Function Roadmap ---
+# =============================================================================================================================================================
+# | Function Name                          | Key Role                     | Purpose                                                                            |
+# |----------------------------------------|------------------------------|------------------------------------------------------------------------------------|
+# | `main_train_model`                     | **Primary Entry Point**      | Orchestrates model creation, configuration setup, and training dispatch.           |
+# | `train_model`                          | **Training Dispatcher**      | Routes training execution to standard Keras, GradientTape, or staged modes.        |
+# | `train_modern`                         | Standard Keras Loop          | Executes model training using `model.fit`, applying Cosine Decay and Snapshots.    |
+# | `train_hybrid_staged` / `_three_stages`| Staged Hybrid Training       | Implements multi-stage training for hybrid models (e.g., Trend, Physics, Fusion).  |
+# | `train_with_tape`                      | Custom Training Loop         | Implements a custom loop using TensorFlow's `GradientTape` for specialized losses. |
+# | `get_optimizer`                        | Optimizer Factory            | Creates and configures optimizers (e.g., AdamW, Adam) with gradient clipping.      |
+# | `SnapshotSaver`                        | Callback (Ensemble)          | Keras Callback that saves model weights at optimal points during LR cycles.        |
+# | `prepare_training_sets_with_augmentation`| Data Prep Helper           | Augments or combines training/validation sets based on the chosen strategy.        |
+# | `evaluate_snapshots_and_ensemble`      | Diagnostics                  | Assesses performance diversity of snapshot weights for ensemble creation.          |
+# =============================================================================================================================================================
 
 
 """
@@ -64,9 +99,7 @@ def get_lr_schedule(
     initial_lr: float = 1e-3,
     first_decay_steps: int = 500
 ) -> tf.keras.optimizers.schedules.LearningRateSchedule:
-    """
-    Returns a cosine decay restart learning rate schedule.
-    """
+    """Returns a cosine decay with restarts learning rate schedule."""
     return tf.keras.optimizers.schedules.CosineDecayRestarts(
         initial_learning_rate=initial_lr,
         first_decay_steps=first_decay_steps,
@@ -75,14 +108,13 @@ def get_lr_schedule(
         alpha=1e-6
     )
 
-
 # =============================================================================
 # Função auxiliar para gerar um caminho único para checkpoint
 # =============================================================================
 def unique_checkpoint_path(checkpoint_path: str) -> str:
     """
-    Gera um caminho único para o arquivo de checkpoint, incorporando o ID do processo
-    e um timestamp.
+    Generates a unique path for a checkpoint file by embedding the process ID.
+    This prevents conflicts when running multiple training processes in parallel.
     """
     base, ext = os.path.splitext(checkpoint_path)
     unique_suffix = f"{os.getpid()}"
@@ -96,33 +128,32 @@ def get_callbacks(
     """
     Returns a list of callbacks including early stopping and model checkpointing.
     
-    When use_lr_scheduler is True, a ReduceLROnPlateau callback is added.
+    If use_lr_scheduler is True, a ReduceLROnPlateau callback is also included.
     """
-    callbacks = []
-    early_stopping = EarlyStopping(
-        monitor='val_loss',
-        patience=patience,
-        restore_best_weights=True,
-        verbose=1
-    )
-    callbacks.append(early_stopping)
-    
-    model_checkpoint = ModelCheckpoint(
-        checkpoint_path,
-        save_best_only=True,
-        monitor='val_loss'
-    )
-    callbacks.append(model_checkpoint)
+    callbacks = [
+        EarlyStopping(
+            monitor='val_loss',
+            patience=patience,
+            restore_best_weights=True,
+            verbose=1
+        ),
+        ModelCheckpoint(
+            checkpoint_path,
+            save_best_only=True,
+            monitor='val_loss'
+        )
+    ]
     
     if use_lr_scheduler:
-        lr_scheduler = ReduceLROnPlateau(
-            monitor='val_loss',
-            factor=0.25,      # Reduce LR by 50% on plateau
-            patience=50,     # Wait 20 epochs after improvement stops
-            min_lr=1e-6,
-            verbose=1
+        callbacks.append(
+            ReduceLROnPlateau(
+                monitor='val_loss',
+                factor=0.25,
+                patience=50,
+                min_lr=1e-6,
+                verbose=1
+            )
         )
-        callbacks.append(lr_scheduler)
         
     return callbacks
 
@@ -138,105 +169,59 @@ def get_optimizer(
     global_clipnorm: float = 1.0
 ) -> tf.keras.optimizers.Optimizer:
     """
-    Retorna uma instância de otimizador com base no optimizer_type.
+    Returns an optimizer instance based on the specified type.
 
-    Parâmetros:
-      optimizer_type: Tipo do otimizador ('adamw', 'adam', 'sgd', 'rmsprop' ou 'adagrad').
-      initial_lr: Taxa de aprendizado inicial.
-      weight_decay: Decaimento de peso (aplicado apenas no AdamW).
-      first_decay_steps: Número de passos para o primeiro ciclo de decaimento da taxa (usado na função de agendamento, se aplicável).
-      global_clipnorm: Valor de clipagem global dos gradientes.
+    Args:
+      optimizer_type: Type of optimizer ('adamw', 'adam', 'sgd', 'rmsprop', 'adagrad').
+      initial_lr: The initial learning rate.
+      weight_decay: Weight decay value (only applied to AdamW).
+      first_decay_steps: Steps for the first decay cycle (used in LR schedule if applicable).
+      global_clipnorm: Global gradient clipping value.
 
-    Retorna:
-      Uma instância de tf.keras.optimizers.Optimizer configurada conforme o tipo escolhido.
+    Returns:
+      A configured instance of tf.keras.optimizers.Optimizer.
     """
-    # Supondo que get_lr_schedule seja uma função que retorna um agendador de taxa de aprendizado com decay cosseno.
-    if optimizer_type.lower() == 'adamw':
+    optimizer_type = optimizer_type.lower()
+    
+    if optimizer_type == 'adamw':
         lr_schedule = get_lr_schedule(initial_lr, first_decay_steps)
-        optimizer = tfa.optimizers.AdamW(
+        return tfa.optimizers.AdamW(
             learning_rate=lr_schedule,
             weight_decay=weight_decay,
             global_clipnorm=global_clipnorm
         )
-    elif optimizer_type.lower() == 'adam':
-        optimizer = tf.keras.optimizers.Adam(
-            learning_rate=initial_lr,
-            clipvalue=global_clipnorm  # clipagem dos gradientes
-        )
-    elif optimizer_type.lower() == 'sgd':
-        optimizer = tf.keras.optimizers.SGD(
-            learning_rate=initial_lr,
-            momentum=0.0,
-            clipnorm=global_clipnorm  # clipagem dos gradientes
-        )
-    elif optimizer_type.lower() == 'rmsprop':
-        optimizer = tf.keras.optimizers.RMSprop(
-            learning_rate=initial_lr,
-            clipnorm=global_clipnorm  # clipagem dos gradientes
-        )
-    elif optimizer_type.lower() == 'adagrad':
-        optimizer = tf.keras.optimizers.Adagrad(
-            learning_rate=initial_lr,
-            clipnorm=global_clipnorm  # clipagem dos gradientes
-        )
-    else:
-        raise ValueError("Tipo de otimizador não suportado. Escolha entre 'adamw', 'adam', 'sgd', 'rmsprop' ou 'adagrad'.")
     
-    return optimizer
+    # For other optimizers, create a dictionary to reduce boilerplate
+    optimizer_map = {
+        'adam': tf.keras.optimizers.Adam,
+        'sgd': tf.keras.optimizers.SGD,
+        'rmsprop': tf.keras.optimizers.RMSprop,
+        'adagrad': tf.keras.optimizers.Adagrad,
+    }
+
+    if optimizer_type in optimizer_map:
+        optimizer_class = optimizer_map[optimizer_type]
+        config = {'learning_rate': initial_lr}
+        # Add clipnorm/clipvalue based on optimizer support
+        if optimizer_type == 'adam':
+            config['clipvalue'] = global_clipnorm
+        else:
+            config['clipnorm'] = global_clipnorm
+        
+        # SGD has a momentum parameter that can be configured if needed
+        if optimizer_type == 'sgd':
+            config['momentum'] = 0.0
+
+        return optimizer_class(**config)
+    
+    raise ValueError(f"Unsupported optimizer type: '{optimizer_type}'. "
+                     "Choose from 'adamw', 'adam', 'sgd', 'rmsprop', or 'adagrad'.")
 
 
 
 class HistoryObject:
     def __init__(self):
         self.history = {"loss": [], "val_loss": []}
-
-def train_with_tape(
-    model, optimizer, X, y, epochs, batch_size,
-    patience, checkpoint_path, diagnostic_interval
-):
-    train_dataset, val_dataset = create_tf_datasets(X, y, batch_size)
-    adaptive_loss_fn = model.loss
-
-    best_val_loss = np.inf
-    epochs_no_improve = 0
-    history_obj = HistoryObject()  # Use our History-like object
-
-    for epoch in range(epochs):
-        tf.print(f"\nEpoch {epoch+1}/{epochs}")
-        epoch_loss = []
-
-        for step, (batch_X, batch_y) in enumerate(train_dataset):
-            loss = train_step(
-                model, adaptive_loss_fn, optimizer, batch_X, batch_y,
-                diagnostic_interval, epoch, step
-            )
-            epoch_loss.append(loss)
-
-        epoch_loss_avg = np.mean(epoch_loss)
-        val_loss_avg = evaluate_model(model, adaptive_loss_fn, val_dataset)
-
-        # Record the metrics in our history object
-        history_obj.history["loss"].append(epoch_loss_avg)
-        history_obj.history["val_loss"].append(val_loss_avg)
-
-        tf.print(f"Epoch loss: {epoch_loss_avg:.4f} | Val loss: {val_loss_avg:.4f}")
-
-        # Early stopping logic
-        if val_loss_avg < best_val_loss:
-            best_val_loss = val_loss_avg
-            epochs_no_improve = 0
-            model.save_weights(checkpoint_path)
-        else:
-            epochs_no_improve += 1
-            if epochs_no_improve >= patience:
-                tf.print("Early stopping triggered.")
-                break
-
-    # Load best model
-    model.load_weights(checkpoint_path)
-    history_evaluation(history_obj)  # Now works because history_obj has .history
-    return model, history_obj
-
 
 def train_step(model, loss_fn, optimizer, X, y, diagnostic_interval, epoch, step):
     with tf.GradientTape(persistent=True) as tape:
@@ -307,22 +292,20 @@ def train_with_tape(
     checkpoint_path: str = 'best_model.h5'
 ) -> Tuple[tf.keras.Model, dict]:
     """
-    Treina o modelo utilizando GradientTape, reproduzindo o comportamento
-    do pipeline tradicional com model.fit, incluindo avaliação, early stopping
-    e checkpointing.
+    Trains a model using a custom GradientTape loop.
+
+    This function mimics the behavior of `model.fit`, including dataset creation,
+    evaluation, early stopping, and checkpointing.
     """
-    # Cria os datasets de treino e validação com o mesmo pipeline tradicional
     train_ds, val_ds = create_tf_datasets(X, y, batch_size)
     best_val_loss = np.inf
     epochs_no_improve = 0
-    history_obj = HistoryObject()  # Reuse your History-like object
+    history = {"loss": [], "val_loss": []}  # Use a standard dictionary
     
-    # Define a função de treinamento por batch com @tf.function para otimização
     @tf.function
     def train_step(batch_X, batch_y):
         with tf.GradientTape() as tape:
             preds = model(batch_X, training=True)
-            # Calcula a perda média para o batch
             loss = tf.keras.losses.MeanAbsoluteError()(batch_y, preds)
         grads = tape.gradient(loss, model.trainable_variables)
         optimizer.apply_gradients(zip(grads, model.trainable_variables))
@@ -330,21 +313,18 @@ def train_with_tape(
 
     for epoch in range(epochs):
         epoch_losses = []
-        # Itera sobre os batches do dataset de treino
         for batch_X, batch_y in train_ds:
             loss = train_step(batch_X, batch_y)
-            epoch_losses.append(loss)
-        # Calcula a perda média do epoch
-        avg_epoch_loss = np.mean([loss.numpy() for loss in epoch_losses])
-        # Avalia o modelo no dataset de validação
+            epoch_losses.append(loss.numpy())
+        
+        avg_epoch_loss = np.mean(epoch_losses)
         val_loss = evaluate_model(model, tf.keras.losses.MeanAbsoluteError(), val_ds)
         
-        history_obj.history["loss"].append(avg_epoch_loss)
-        history_obj.history["val_loss"].append(val_loss)
+        history["loss"].append(avg_epoch_loss)
+        history["val_loss"].append(val_loss)
         
         print(f"Epoch {epoch+1}/{epochs} - Loss: {avg_epoch_loss:.4f} - Val Loss: {val_loss:.4f}")
         
-        # Se houve melhoria na validação, salva os pesos e reseta o contador
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             epochs_no_improve = 0
@@ -355,19 +335,16 @@ def train_with_tape(
                 print("Early stopping triggered.")
                 break
 
-    # Carrega os melhores pesos salvos antes de retornar
     model.load_weights(checkpoint_path)
-    return model, history_obj
-
-
-# =============================================================================
-# Análise: Curva de validação, Diversidade e Ensemble dos Snapshots
-# =============================================================================
-
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib
-matplotlib.set_loglevel("warning")
+    
+    # To call history_evaluation, we wrap the dict in a temporary object
+    class HistoryWrapper:
+        def __init__(self, history_dict):
+            self.history = history_dict
+            
+    history_evaluation(HistoryWrapper(history))
+    
+    return model, history
 
 
 def plot_val_loss_snapshots(history, snapshot_epochs):
@@ -511,22 +488,6 @@ def _get_lr_schedule_cosine_restarts(
     return WarmUpSchedule(initial_lr, cosine_decay_restarts, warmup_steps)
 
 
-def final_loss():
-    def _loss(y_true, y_pred):
-        # weighted MAE
-        H = tf.shape(y_true)[1]
-        idx = tf.cast(tf.range(H), tf.float32)
-        w   = tf.pow(0.995, idx); w = w / (tf.reduce_mean(w)+1e-8); w = tf.reshape(w, [1,H])
-        mae = tf.reduce_mean(tf.abs(y_true - y_pred) * w)
-
-        # suavidade (1ª e 2ª derivadas)
-        dy  = y_pred[:, 1:] - y_pred[:, :-1]
-        d2  = dy[:, 1:] - dy[:, :-1]
-        reg = 0.02*tf.reduce_mean(tf.abs(dy)) + 0.05*tf.reduce_mean(tf.abs(d2))
-        return mae + reg
-    return _loss
-
-
 def _compile_model(
     model: tf.keras.Model,
     lr_schedule: tf.keras.optimizers.schedules.LearningRateSchedule,
@@ -578,9 +539,6 @@ Tips:
 - For Snapshot Ensembles, disable early stopping or set high patience.
 """
 
-
-
-from common.common import create_internal_validation_set_from_disk
 
 # =============================================================================
 # Salva os Snapshots para usar com Ensembles + Armazena as epochs dos snapshots
@@ -715,9 +673,362 @@ def select_best_snapshots_from_callback(
     
     return snapshot_weights, snapshot_epochs, snapshot_val_losses
 
-# =============================================================================
-# Função moderna de Treino para assegurar a convergência
-# =============================================================================
+
+
+import numpy as np
+import statsmodels.api as sm
+from typing import Tuple, Union, List
+
+# Place this new helper function somewhere accessible.
+def create_hp_filtered_data(
+    X: np.ndarray, 
+    y: np.ndarray, 
+    hp_lambda: float = 128000.0,
+    features_to_filter: List[int] = [0, 3, 7] # PI, AVG_DOWNHOLE_PRESSURE, BORE_OIL_VOL
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Creates a smoothed, synthetic version of windowed (X, y) data using an HP filter.
+
+    Args:
+        X: Input features of shape (n_samples, timesteps, n_features).
+        y: Target values of shape (n_samples, horizon).
+        hp_lambda: The smoothing parameter for the HP filter.
+        features_to_filter: List of indices of the features in X to smooth.
+
+    Returns:
+        A tuple of (X_filtered, y_filtered).
+    """
+    print(f"INFO: Creating HP-filtered synthetic data. Smoothing features at indices: {features_to_filter}")
+    X_filtered = np.copy(X)
+    y_filtered = np.copy(y)
+
+    for i in range(X.shape[0]):
+        # Filter specified features in X for each sample
+        for feat_idx in features_to_filter:
+            if feat_idx < X.shape[2]: # Safety check
+                try:
+                    # HP filter returns (cycle, trend), we want the smooth trend
+                    _, trend = sm.tsa.filters.hpfilter(X[i, :, feat_idx], lamb=hp_lambda)
+                    X_filtered[i, :, feat_idx] = trend
+                except Exception as e:
+                    print(f"Warning: HP filter failed for sample {i}, feature {feat_idx}. Keeping original. Error: {e}")
+
+        # Filter the target y for each sample
+        try:
+            _, trend = sm.tsa.filters.hpfilter(y[i, :], lamb=hp_lambda)
+            y_filtered[i, :] = trend
+        except Exception as e:
+            print(f"Warning: HP filter failed for target sample {i}. Keeping original. Error: {e}")
+            
+    return X_filtered, y_filtered
+
+# Place this function right above train_modern.
+def prepare_training_sets_with_augmentation(
+    X_train_orig: np.ndarray,
+    y_train_orig: np.ndarray,
+    X_val_orig: np.ndarray,
+    y_val_orig: np.ndarray,
+    mode: str = "classic", # "classic" | "augment_train" | "fold_in_val"
+    hp_lambda: float = 512000.0
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Orchestrates data preparation, providing different augmentation strategies.
+
+    Args:
+        X_train_orig, y_train_orig: The original training data.
+        X_val_orig, y_val_orig: The original validation data.
+        mode: The strategy to use.
+            - "classic": Use original data as is.
+            - "augment_train": Augment training data with a filtered version of itself.
+            - "fold_in_val": Augment training data with a filtered version of the validation set.
+
+    Returns:
+        A tuple of the final (X_train, y_train, X_val, y_val) to be used in model.fit().
+    """
+    if mode == "classic":
+        logging.info("INFO: Data prep mode 'classic'. Using original data.")
+        return X_train_orig, y_train_orig, X_val_orig, y_val_orig
+
+    elif mode == "augment_train":
+        logging.info("INFO: Data prep mode 'augment_train'. Filtering train set and adding to itself.")
+        X_filtered, y_filtered = create_hp_filtered_data(X_train_orig, y_train_orig, hp_lambda)
+        
+        X_train_final = np.concatenate([X_train_orig, X_filtered], axis=0)
+        y_train_final = np.concatenate([y_train_orig, y_filtered], axis=0)
+        
+        # Validation set remains untouched
+        return X_train_final, y_train_final, X_val_orig, y_val_orig
+
+    elif mode == "fold_in_val":
+        logging.info("INFO: Data prep mode 'fold_in_val'. Adding to train.")
+        X_train_final = np.concatenate([X_train_orig, X_val_orig], axis=0)
+        y_train_final = np.concatenate([y_train_orig, y_val_orig], axis=0)
+
+        # Validation set remains untouched
+        return X_train_final, y_train_final, X_val_orig, y_val_orig
+        
+    else:
+        raise ValueError(f"Unknown data preparation mode: '{mode}'")
+
+
+# ========= Base =========
+class BaseTransform:
+    """Contrato: recebe (X, y) e devolve (X', y') SEM mutar inputs."""
+    def __init__(self, **kwargs):
+        self.cfg = dict(kwargs or {})
+
+    def __call__(self, X: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        return self.apply(X, y)
+
+    def apply(self, X: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        raise NotImplementedError
+
+
+class HPFilterTransform(BaseTransform):
+    """
+    Suaviza features/target com HP-filter.
+    modes:
+      - 'two_sided'     : HP tradicional (NÃO causal). Use só no treino.
+      - 'composite_base': seu método "smoothed-history base" por janelas (causal por passo).
+    """
+    def __init__(
+        self,
+        hp_lambda: float = 128000.0,
+        mode: str = "two_sided",   # 'two_sided' | 'composite_base'
+        features_to_filter: Optional[List[int]] = None,  # índices no eixo de features de X
+        filter_target: bool = True,
+    ):
+        super().__init__(
+            hp_lambda=hp_lambda, mode=mode,
+            features_to_filter=features_to_filter, filter_target=filter_target
+        )
+        self.lamb = float(hp_lambda)
+        self.mode = mode
+        self.features_to_filter = features_to_filter or []
+        self.filter_target = bool(filter_target)
+
+    def _hp_series(self, series_1d: np.ndarray) -> np.ndarray:
+        """HP two-sided numa série 1D; devolve o trend (suavizado)."""
+        _, trend = sm.tsa.filters.hpfilter(series_1d, lamb=self.lamb)
+        return np.asarray(trend, dtype=float)
+
+    def _hp_composite_hist_base(self, windows_2d: np.ndarray) -> np.ndarray:
+        """
+        Sua ideia causal por passo: usa a fita 0 inteira como base suavizada,
+        e depois agrega apenas o último ponto suavizado de cada janela subsequente.
+        windows_2d: (N, H)
+        return: série 1D de comprimento L = N + H - 1
+        """
+        n_windows, horizon = windows_2d.shape
+        L = n_windows + horizon - 1
+        out = np.empty(L, dtype=float)
+
+        # 1) suaviza a 1ª fita inteira
+        base_sm = self._hp_series(windows_2d[0, :])
+        out[:horizon] = base_sm
+
+        # 2) para cada janela i>0, pega só o último ponto (raw), faz HP sobre histórico + esse ponto, guarda último do trend
+        for i in range(1, n_windows):
+            t = horizon + i - 1
+            next_raw_point = windows_2d[i, -1]  # causal: só usa o último da janela i
+            composite = np.append(out[:t], next_raw_point)
+            _, smoothed = sm.tsa.filters.hpfilter(composite, lamb=self.lamb)
+            out[t] = float(smoothed[-1])
+        return out
+
+    def _series_to_windows(self, series: np.ndarray, N: int, H: int) -> np.ndarray:
+        """Reconstrói janelas stride=1 a partir de série 1D (L=N+H-1)."""
+        L = series.shape[0]
+        exp_L = N + H - 1
+        if L != exp_L:
+            raise ValueError(f"series len {L} != N+H-1 ({exp_L})")
+        out = np.empty((N, H), dtype=series.dtype)
+        for i in range(N):
+            out[i, :] = series[i:i+H]
+        return out
+
+    def apply(self, X: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        Xf = np.array(X, copy=True)
+        yf = np.array(y, copy=True)
+
+        # --- Features (X: N, M, F) -> suaviza ao longo do tempo M ---
+        if Xf.ndim != 3:
+            raise ValueError("HPFilterTransform espera X com shape (N, M, F)")
+        N, M, F = Xf.shape
+        for fi in self.features_to_filter:
+            if fi < 0 or fi >= F:
+                continue
+            if self.mode == "two_sided":
+                for i in range(N):
+                    Xf[i, :, fi] = self._hp_series(Xf[i, :, fi])
+            elif self.mode == "composite_base":
+                # composite_base faz sentido para *alvo* windowed; para X (histórico), usamos two_sided por amostra
+                # para manter causal em X: podemos usar EMAFilterTransform em vez de HP composite.
+                for i in range(N):
+                    Xf[i, :, fi] = self._hp_series(Xf[i, :, fi])
+            else:
+                raise ValueError(f"Unknown mode {self.mode}")
+
+        # --- Target (y: N, H) ---
+        if self.filter_target:
+            if yf.ndim != 2:
+                raise ValueError("HPFilterTransform espera y com shape (N, H)")
+            Nw, H = yf.shape
+            if self.mode == "two_sided":
+                for i in range(Nw):
+                    yf[i, :] = self._hp_series(yf[i, :])
+            elif self.mode == "composite_base":
+                # 1) gera série 1D suavizada causal
+                series = self._hp_composite_hist_base(yf)
+                # 2) volta para janelas stride=1
+                yf = self._series_to_windows(series, Nw, H)
+            else:
+                raise ValueError(f"Unknown mode {self.mode}")
+
+        return Xf, yf
+
+
+class StepSmootherTransform(BaseTransform):
+    """
+    Detecta 'degraus' por limiar em |Δ| e substitui pontos por média local.
+    - causal=True -> usa média de janela [max(0,t-w), t]
+    - causal=False -> usa média centrada [t-w, t+w]
+    Aplica em X(features selecionadas) e/ou y.
+    """
+    def __init__(
+        self,
+        delta_threshold: float = 3_000.0,
+        window: int = 3,
+        causal: bool = True,
+        features_to_filter: Optional[List[int]] = None,
+        filter_target: bool = False,
+    ):
+        super().__init__(delta_threshold=delta_threshold, window=window, causal=causal,
+                         features_to_filter=features_to_filter, filter_target=filter_target)
+        self.th = float(delta_threshold)
+        self.win = int(window)
+        self.causal = bool(causal)
+        self.features_to_filter = features_to_filter or []
+        self.filter_target = bool(filter_target)
+
+    def _smooth_steps(self, s: np.ndarray) -> np.ndarray:
+        s = np.array(s, dtype=float, copy=True)
+        dif = np.abs(np.diff(s, prepend=s[0]))
+        idx = np.where(dif > self.th)[0]
+        for t in idx:
+            if self.causal:
+                a = max(0, t - self.win)
+                b = t + 1
+            else:
+                a = max(0, t - self.win)
+                b = min(len(s), t + self.win + 1)
+            m = np.mean(s[a:b])
+            s[t] = m
+        return s
+
+    def apply(self, X: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        Xf = np.array(X, copy=True)
+        yf = np.array(y, copy=True)
+
+        if Xf.ndim != 3:
+            raise ValueError("StepSmootherTransform espera X com shape (N, M, F)")
+        N, M, F = Xf.shape
+        for fi in self.features_to_filter:
+            if 0 <= fi < F:
+                for i in range(N):
+                    Xf[i, :, fi] = self._smooth_steps(Xf[i, :, fi])
+
+        if self.filter_target:
+            if yf.ndim != 2:
+                raise ValueError("StepSmootherTransform espera y com shape (N, H)")
+            Nw, H = yf.shape
+            for i in range(Nw):
+                yf[i, :] = self._smooth_steps(yf[i, :])
+
+        return Xf, yf
+
+
+def apply_pipeline(
+    X: np.ndarray, y: np.ndarray, transforms: List[BaseTransform]
+) -> Tuple[np.ndarray, np.ndarray]:
+    Xo, yo = X, y
+    for t in transforms or []:
+        Xo, yo = t(Xo, yo)
+    return Xo, yo
+
+def build_transforms_from_cfg(cfg: Optional[Dict[str, Any]]) -> List[BaseTransform]:
+    """
+    Exemplo de cfg:
+    {
+      "hp": {"enabled": True, "mode": "composite_base", "hp_lambda": 128000.0,
+             "features_to_filter": [0,3], "filter_target": True},
+      "step": {"enabled": True, "delta_threshold": 2500.0, "window": 2, "causal": True,
+               "features_to_filter": [0,3], "filter_target": True},
+    }
+    """
+    transforms: List[BaseTransform] = []
+    if not cfg:
+        return transforms
+
+    hp_cfg = cfg.get("hp", {})
+    if hp_cfg.get("enabled", False):
+        transforms.append(
+            HPFilterTransform(
+                hp_lambda = hp_cfg.get("hp_lambda", 128000.0),
+                mode = hp_cfg.get("mode", "two_sided"),
+                features_to_filter = hp_cfg.get("features_to_filter", []),
+                filter_target = hp_cfg.get("filter_target", True),
+            )
+        )
+
+    ema_cfg = cfg.get("ema", {})
+    if ema_cfg.get("enabled", False):
+        transforms.append(
+            EMAFilterTransform(
+                alpha = ema_cfg.get("alpha", 0.2),
+                features_to_filter = ema_cfg.get("features_to_filter", []),
+                filter_target = ema_cfg.get("filter_target", False),
+            )
+        )
+
+    step_cfg = cfg.get("step", {})
+    if step_cfg.get("enabled", False):
+        transforms.append(
+            StepSmootherTransform(
+                delta_threshold = step_cfg.get("delta_threshold", 3000.0),
+                window = step_cfg.get("window", 3),
+                causal = step_cfg.get("causal", True),
+                features_to_filter = step_cfg.get("features_to_filter", []),
+                filter_target = step_cfg.get("filter_target", False),
+            )
+        )
+
+    return transforms
+
+
+
+transform_cfg = {
+    "hp": {
+        "enabled": False,
+        "mode": "composite_base",       # causal por passo (boa pra fronteira)
+        "hp_lambda": 64000.0,
+        "features_to_filter": [],       # não filtra X com HP aqui
+        "filter_target": True,
+    },
+
+    # "step": {
+    #     "enabled": True,
+    #     "delta_threshold": 2500.0,
+    #     "window": 2,
+    #     "causal": True,
+    #     "features_to_filter": [0, 3],   # remove degraus fortes nos drivers
+    #     "filter_target": False,         # deixe False se já usar HP no y
+    # },
+}
+
+
+
+
 
 def train_modern(
     model: tf.keras.Model,
@@ -733,9 +1044,9 @@ def train_modern(
     weight_decay: float = 1e-4,
     checkpoint_path: str = 'best_model.keras',
     validation_split: float = 0.1,
-    cycles: int = 7,
+    cycles: int = 5,
     use_mixed_precision: bool = True,
-    validation_mode: str = "classic" #hybrid
+    validation_mode: str = "classic" #hybrid, explicit, | "augment_train" | "fold_in_val"
 ) -> Tuple[tf.keras.Model, dict, tuple]:
     """
     Train the model with a modern signature and flexible validation set creation.
@@ -781,9 +1092,12 @@ def train_modern(
         tf.keras.callbacks.LearningRateScheduler(lr_schedule, verbose=0),
     ]
 
-    # Prepare training and validation sets
-    X_train, y_train, X_val_final, y_val_final = _prepare_validation_data(
-        X, y, X_val, y_val, validation_split, mode=validation_mode
+    X_train, y_train, X_val_final, y_val_final = prepare_training_sets_with_augmentation(
+        X_train_orig=X,
+        y_train_orig=y,
+        X_val_orig=X_val,
+        y_val_orig=y_val,
+        mode=validation_mode
     )
 
     history = model.fit(
@@ -801,7 +1115,7 @@ def train_modern(
         snapshot_callback, 
         earlystopping_callback=callbacks[1], 
         epochs=epochs, 
-        n_best=8
+        n_best=5
     )
 
     model._snapshot_weights = snapshot_weights

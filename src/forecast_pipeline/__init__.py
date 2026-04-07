@@ -1,6 +1,7 @@
 _EXPERIMENTS = {
     "Seq2Context": "forecast_pipeline.experiments.seq2context:ExperimentSeq2Context",
     "Seq2Value":   "forecast_pipeline.experiments.seq2value:ExperimentSeq2Value",
+    "Seq2Darts":   "forecast_pipeline.experiments.darts_experiment:ExperimentDarts",
 }
 
 def get_experiment_cls(arch_name: str):

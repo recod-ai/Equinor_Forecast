@@ -1,7 +1,67 @@
+# flake8: noqa: E402
+"""
+This module provides a suite of functions for running time series forecasting
+experiments using the Darts library, with a focus on sliding-window validation
+and iterative forecasting for deep learning models.
+"""
+
+# ==================================================================================================================================================
+#                      --- Module Function Roadmap ---
+# ==================================================================================================================================================
+# | Function Name                          | Key Role                     | Purpose                                                                 |
+# |----------------------------------------|------------------------------|-------------------------------------------------------------------------|
+# | `process_deep_encoder_data_source`     | **Primary Entry Point**      | Orchestrates the entire forecasting process for a given data source.    |
+# | `process_deep_encoder_well`            | **Core Well Processor**      | Handles data prep, training, and evaluation for a single well.          |
+# | `run_sliding_window_forecasting`       | Backtesting Strategy         | Implements a sliding window approach for robust backtesting of models.  |
+# | `fast_iterative_forecast`              | Forecasting Strategy         | Generates forecasts by reusing predictions from prior steps             |
+# | `train_deep_encoder_model`             | Model Training Wrapper       | (Imported) A wrapper function that handles the model training logic.    |
+# | `prepare_time_series` / `_full`        | Data Preparation             | Converts pandas DataFrames into Darts `TimeSeries` objects for modeling.|
+# | `split_train_validation`               | Data Preparation             | Splits a `TimeSeries` into training and validation sets.                |
+# ==================================================================================================================================================
+
+# --- Standard Library Imports ---
+from __future__ import annotations
+import gc
+from functools import reduce
+from typing import Dict, List, Union
+
+# --- Third-Party Imports ---
 import pandas as pd
-from darts import TimeSeries, concatenate
+from darts import TimeSeries
+
+# --- Local Application Imports ---
+from common.forecasting import iterative_forecast_deep_encoder
 from common.models import train_deep_encoder_model
+from config import HYPERPARAM_DESCRIPTIONS
 from evaluation.evaluation import evaluate_and_plot_results
+
+# --- Darts Compatibility Import ---
+# Handle `concatenate` for different Darts versions
+try:
+    # Available in Darts >= 0.25
+    from darts.utils.utils import concatenate
+except ImportError:
+    # Fallback for older Darts versions
+    def concatenate(series_seq: List[TimeSeries]) -> TimeSeries:
+        """Concatenates a sequence of TimeSeries along the time axis."""
+        if not series_seq:
+            raise ValueError("The sequence of series to concatenate is empty.")
+        return reduce(lambda a, b: a.append(b), series_seq)
+
+try:
+    # Available in Darts ≥ 0.25
+    from darts.utils.utils import concatenate  # type: ignore
+except ImportError:
+    # Compatibility for older versions
+    def concatenate(series_seq):
+        """
+        Concatenates a sequence of TimeSeries along the time axis.
+        Equivalent to utils.concatenate() from newer versions.
+        """
+        series_seq = list(series_seq)
+        if not series_seq:
+            raise ValueError("The sequence of series is empty.")
+        return reduce(lambda a, b: a.append(b), series_seq)
 
 
 def prepare_time_series(
@@ -43,7 +103,6 @@ def split_train_validation(series: TimeSeries, covariates: TimeSeries, validatio
     train_cov, val_cov = covariates.split_after(validation_ratio)
     return train_series, val_series, train_cov, val_cov
 
-import gc
 
 def run_sliding_window_forecasting(
     full_series: TimeSeries,
@@ -210,37 +269,7 @@ def process_data_source(
         )
 
         
-        
-# ------------------------------------------------------------------------------------------------------------
 
-import pandas as pd
-from typing import Union, Dict, List
-from common.forecasting import iterative_forecast_deep_encoder
-from evaluation.evaluation import evaluate_and_plot_results
-
-
-
-
-from typing import List, Union, Dict
-import pandas as pd
-from functools import reduce
-from darts import TimeSeries
-from joblib import Parallel, delayed  # Optional: for parallelism
-
-try:
-    # Available in Darts ≥ 0.25
-    from darts.utils.utils import concatenate  # type: ignore
-except ImportError:
-    # Compatibility for older versions
-    def concatenate(series_seq):
-        """
-        Concatenates a sequence of TimeSeries along the time axis.
-        Equivalent to utils.concatenate() from newer versions.
-        """
-        series_seq = list(series_seq)
-        if not series_seq:
-            raise ValueError("The sequence of series is empty.")
-        return reduce(lambda a, b: a.append(b), series_seq)
 
 def fast_iterative_forecast(
     model,
@@ -275,8 +304,6 @@ def fast_iterative_forecast(
     return concatenate(combined).slice_intersect(test_series)
 
 
-from config import HYPERPARAM_DESCRIPTIONS
-import gc
 def process_deep_encoder_well(
     well: str,
     data_source: dict,

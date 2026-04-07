@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 import pandas as pd
+from forecast_pipeline.io_utils import configure_logging
 
 # This script is run from the project root, so we need to add 'src' to the path
 # to make our package importable.
@@ -29,6 +30,7 @@ def main():
 
     It expects a single command-line argument: the path to the YAML campaign config file.
     """
+    configure_logging()
     # 1. --- Argument Parsing ---
     if len(sys.argv) != 2:
         # Provide a helpful usage message if the argument is missing.
